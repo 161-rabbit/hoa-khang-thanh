@@ -37,6 +37,7 @@ interface Props {
   defaultPartnerType?: 'npp' | 'ncc';
   lockPartnerType?: boolean;
   defaultPartnerId?: string;
+  defaultTxnType?: 'thu' | 'chi';
 }
 
 const formatNumber = (num?: number) => {
@@ -52,6 +53,7 @@ export function CongNoDrawer({
   defaultPartnerType = 'npp',
   lockPartnerType = false,
   defaultPartnerId,
+  defaultTxnType,
 }: Props) {
   const { addRecord, updateRecord } = useDebtStore();
   const { distributors } = useDistributorStore();
@@ -63,7 +65,9 @@ export function CongNoDrawer({
   const [partnerType, setPartnerType] = useState<'npp' | 'ncc'>(defaultPartnerType);
   const [partnerId, setPartnerId] = useState('');
   const [entryType, setEntryType] = useState<'daily' | 'order'>('daily');
-  const [type, setType] = useState<'thu' | 'chi'>('thu');
+  const [type, setType] = useState<'thu' | 'chi'>(
+    defaultTxnType || (defaultPartnerType === 'ncc' ? 'chi' : 'thu'),
+  );
   const [amount, setAmount] = useState<number>(0);
   const [remainingDebt, setRemainingDebt] = useState<number>(0);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -162,7 +166,7 @@ export function CongNoDrawer({
       setDate(today);
       setReferenceCode('');
       setEntryType('daily');
-      setType(defaultPartnerType === 'ncc' ? 'chi' : 'thu');
+      setType(defaultTxnType || (defaultPartnerType === 'ncc' ? 'chi' : 'thu'));
       setAmount(0);
       setCreator('Trần Thị Kim Thành');
       setNotes('');
@@ -185,7 +189,7 @@ export function CongNoDrawer({
         setRemainingDebt(0);
       }
     }
-  }, [record, initialMode, defaultPartnerType, defaultPartnerId, isOpen, distributors, suppliers]);
+  }, [record, initialMode, defaultPartnerType, defaultPartnerId, defaultTxnType, isOpen, distributors, suppliers]);
 
   const handlePartnerChange = (newPartnerId: string) => {
     setPartnerId(newPartnerId);
@@ -288,11 +292,18 @@ export function CongNoDrawer({
 
     if (mode === 'create') {
       addRecord(payload as any);
-      toast.success(
-        `Đã tạo phiếu công nợ (${entryType === 'order' ? 'Theo đơn' : 'Theo ngày'}) cho ${
-          partnerType === 'npp' ? 'NPP' : 'NCC'
-        } ${selectedPartner?.name || ''}`,
-      );
+      if (partnerType === 'ncc') {
+        const actName = type === 'chi' ? 'mua hàng (+ nợ)' : 'trả nợ (- nợ)';
+        toast.success(
+          `Đã ghi nhận ${actName} ${formatNumber(numAmount)} đ cho NCC ${selectedPartner?.name || ''}`,
+        );
+      } else {
+        toast.success(
+          `Đã tạo phiếu công nợ (${entryType === 'order' ? 'Theo đơn' : 'Theo ngày'}) cho NPP ${
+            selectedPartner?.name || ''
+          }`,
+        );
+      }
     } else if (mode === 'edit' && record) {
       updateRecord(record.id, payload);
       toast.success('Đã cập nhật bản ghi công nợ thành công');
@@ -314,13 +325,21 @@ export function CongNoDrawer({
           <div>
             <h2 className="text-base font-bold text-foreground">
               {mode === 'create'
-                ? 'Thêm phát sinh công nợ'
+                ? partnerType === 'ncc'
+                  ? 'Thêm phát sinh công nợ NCC'
+                  : 'Thêm phát sinh công nợ'
                 : mode === 'edit'
-                ? 'Chỉnh sửa công nợ'
+                ? partnerType === 'ncc'
+                  ? 'Chỉnh sửa công nợ NCC'
+                  : 'Chỉnh sửa công nợ'
+                : partnerType === 'ncc'
+                ? 'Chi tiết công nợ NCC'
                 : 'Chi tiết bản ghi công nợ'}
             </h2>
             <p className="text-xs text-muted-foreground">
-              Theo dõi công nợ theo ngày & theo đơn cho Nhà Phân Phối / Nhà Cung Cấp
+              {partnerType === 'ncc'
+                ? 'Ghi nhận Mua hàng & Trả nợ Nhà Cung Cấp (Nhà vườn)'
+                : 'Theo dõi công nợ theo ngày & theo đơn cho Nhà Phân Phối / Đại lý'}
             </p>
           </div>
         </div>
@@ -488,39 +507,70 @@ export function CongNoDrawer({
           </div>
         )}
 
-        {/* Phân loại: Thu tiền / Chi tiền */}
+        {/* Phân loại phát sinh: Mua hàng / Trả nợ (với NCC) hoặc Thu tiền / Chi tiền (với NPP) */}
         <div>
           <label className="text-xs font-semibold text-foreground mb-1.5 block">
             Phân loại phát sinh
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={isView}
-              onClick={() => handleTypeChange('thu')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
-                type === 'thu'
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-500/20'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
-              } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
-            >
-              <ArrowDownCircle size={16} className={type === 'thu' ? 'text-emerald-600' : ''} />
-              ↓ Thu tiền ({partnerType === 'npp' ? 'Thu nợ' : 'Hoàn tiền'})
-            </button>
-            <button
-              type="button"
-              disabled={isView}
-              onClick={() => handleTypeChange('chi')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
-                type === 'chi'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 ring-1 ring-blue-500/20'
-                  : 'border-border bg-card text-muted-foreground hover:bg-muted'
-              } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
-            >
-              <ArrowUpCircle size={16} className={type === 'chi' ? 'text-blue-600' : ''} />
-              ↑ Chi tiền ({partnerType === 'npp' ? 'Bán hàng nợ' : 'Chi trả NCC'})
-            </button>
-          </div>
+          {partnerType === 'ncc' ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isView}
+                onClick={() => handleTypeChange('chi')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
+                  type === 'chi'
+                    ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 ring-1 ring-orange-500/20 shadow-xs'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
+              >
+                <ArrowUpCircle size={16} className={type === 'chi' ? 'text-orange-600' : ''} />
+                <span>↑ Mua hàng (Tăng nợ NCC)</span>
+              </button>
+              <button
+                type="button"
+                disabled={isView}
+                onClick={() => handleTypeChange('thu')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
+                  type === 'thu'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-500/20 shadow-xs'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
+              >
+                <ArrowDownCircle size={16} className={type === 'thu' ? 'text-emerald-600' : ''} />
+                <span>↓ Trả nợ (Giảm nợ NCC)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isView}
+                onClick={() => handleTypeChange('thu')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
+                  type === 'thu'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 ring-1 ring-emerald-500/20 shadow-xs'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
+              >
+                <ArrowDownCircle size={16} className={type === 'thu' ? 'text-emerald-600' : ''} />
+                <span>↓ Thu tiền (Thu nợ NPP)</span>
+              </button>
+              <button
+                type="button"
+                disabled={isView}
+                onClick={() => handleTypeChange('chi')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all ${
+                  type === 'chi'
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 ring-1 ring-blue-500/20 shadow-xs'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                } ${isView ? 'cursor-not-allowed opacity-80' : ''}`}
+              >
+                <ArrowUpCircle size={16} className={type === 'chi' ? 'text-blue-600' : ''} />
+                <span>↑ Chi tiền (Bán hàng nợ)</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Ngày ghi nhận & Chứng từ */}
@@ -558,6 +608,10 @@ export function CongNoDrawer({
                     ? partnerType === 'npp'
                       ? 'Ví dụ: DH-2026-001'
                       : 'Ví dụ: PO-NCC-001'
+                    : partnerType === 'ncc'
+                    ? type === 'chi'
+                      ? 'Ví dụ: HĐ-MUA-001 (hoặc để trống tự ghi Mua hàng NCC)'
+                      : 'Ví dụ: UNC-TRA-001 (hoặc để trống tự ghi Trả nợ NCC)'
                     : 'Ví dụ: PT-001 hoặc PC-001'
                 }
                 value={referenceCode}
@@ -719,10 +773,18 @@ export function CongNoDrawer({
                             className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                               itemThu
                                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : partnerType === 'ncc'
+                                ? 'bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300'
                                 : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
                             }`}
                           >
-                            {itemThu ? 'Thu tiền' : 'Chi (Bán hoa)'}
+                            {partnerType === 'ncc'
+                              ? itemThu
+                                ? '↓ Trả nợ'
+                                : '↑ Mua hàng'
+                              : itemThu
+                              ? '↓ Thu tiền'
+                              : '↑ Chi (Bán hoa)'}
                           </span>
                         </td>
                         <td className="py-2 px-2.5 font-mono font-bold text-right text-foreground">

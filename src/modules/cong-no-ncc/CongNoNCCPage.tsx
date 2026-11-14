@@ -107,6 +107,7 @@ export default function CongNoNCCPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit' | 'view'>('create');
   const [selectedRecord, setSelectedRecord] = useState<DebtDailyRecord | null>(null);
   const [drawerDefaultPartnerId, setDrawerDefaultPartnerId] = useState<string | undefined>(undefined);
+  const [drawerDefaultTxnType, setDrawerDefaultTxnType] = useState<'thu' | 'chi'>('chi');
 
   // State cho Tab Tổng hợp
   const [tongHopSearch, setTongHopSearch] = useState('');
@@ -442,10 +443,11 @@ export default function CongNoNCCPage() {
     }
   };
 
-  // Mở Drawer thêm mới / trả tiền NCC
-  const handleAddNewDebt = (targetNccId?: string) => {
+  // Mở Drawer thêm mới: Mua hàng / Trả nợ NCC
+  const handleAddNewDebt = (targetNccId?: string, defaultTxnType: 'thu' | 'chi' = 'chi') => {
     setSelectedRecord(null);
     setDrawerDefaultPartnerId(targetNccId || (selectedPartnerId !== 'all' ? selectedPartnerId : undefined));
+    setDrawerDefaultTxnType(defaultTxnType);
     setDrawerMode('create');
     setIsDrawerOpen(true);
   };
@@ -532,7 +534,7 @@ export default function CongNoNCCPage() {
         'Tên Nhà Cung Cấp': r.partnerName,
         'Số điện thoại': r.phone || '',
         'Lô nhập / Chứng từ': getRecordReferenceCode(r),
-        'Loại phát sinh': isThu ? 'Trả tiền NCC (-)' : 'Nhập hoa nợ (+)',
+        'Loại phát sinh': isThu ? 'Trả nợ NCC (-)' : 'Mua hàng NCC (+)',
         'Số tiền': amt || 0,
         'Công nợ còn': remDebt || 0,
         'Người lập': r.creator || '',
@@ -561,8 +563,8 @@ export default function CongNoNCCPage() {
       'Người liên hệ': s.contactPerson || '',
       'Số điện thoại': s.phone || '',
       'Công nợ cũ': s.oldDebt || 0,
-      'Tiền nhập hoa': s.importAmount || 0,
-      'Tiền đã trả NCC': s.paidAmount || 0,
+      'Tiền mua hàng': s.importAmount || 0,
+      'Tiền đã trả nợ': s.paidAmount || 0,
       'Còn nợ cuối': s.finalDebt || 0,
       'Trạng thái': s.status === 'active' ? 'Đang hợp tác' : 'Tạm ngưng',
       'Địa chỉ': s.address || '',
@@ -644,12 +646,12 @@ export default function CongNoNCCPage() {
       }
       case 'type':
         return isThu ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            ↓ Trả NCC
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-xs">
+            ↓ Trả nợ
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800">
-            ↑ Nhập nợ
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-extrabold bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200 dark:border-orange-800 shadow-xs">
+            ↑ Mua hàng
           </span>
         );
       case 'amount':
@@ -745,7 +747,7 @@ export default function CongNoNCCPage() {
                 isThu ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-orange-50 text-orange-700 border border-orange-200'
               }`}
             >
-              {isThu ? '↓ Trả NCC' : '↑ Nhập hoa'}
+              {isThu ? '↓ Trả nợ' : '↑ Mua hàng'}
             </span>
           </div>
           <span className={`text-xs font-mono font-extrabold ${isThu ? 'text-emerald-600' : 'text-orange-600'}`}>
@@ -861,8 +863,8 @@ export default function CongNoNCCPage() {
                     <th className="py-2.5 px-3">Tên Nhà Cung Cấp</th>
                     <th className="py-2.5 px-3">Người liên hệ & SĐT</th>
                     <th className="py-2.5 px-3 text-right">Nợ cũ</th>
-                    <th className="py-2.5 px-3 text-right text-orange-600">Tiền nhập hoa (+)</th>
-                    <th className="py-2.5 px-3 text-right text-emerald-600">Đã trả NCC (-)</th>
+                    <th className="py-2.5 px-3 text-right text-orange-600">Tiền mua hàng (+)</th>
+                    <th className="py-2.5 px-3 text-right text-emerald-600">Đã trả nợ (-)</th>
                     <th className="py-2.5 px-3 text-right">Còn nợ cuối</th>
                     <th className="py-2.5 px-3 text-center">Trạng thái</th>
                     <th className="py-2.5 px-3 text-center w-36">Thao tác</th>
@@ -930,11 +932,11 @@ export default function CongNoNCCPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleAddNewDebt(s.id)}
+                              onClick={() => handleAddNewDebt(s.id, 'thu')}
                               className="px-2 py-1 rounded text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                              title="Tạo phiếu thanh toán / trả tiền cho NCC này"
+                              title="Tạo phiếu trả nợ cho NCC này"
                             >
-                              Trả tiền
+                              Trả nợ
                             </button>
                           </div>
                         </td>
@@ -1126,19 +1128,19 @@ export default function CongNoNCCPage() {
                     type="button"
                     onClick={() => setTxnTypeFilter('chi')}
                     className={`px-2 py-1 rounded-md font-medium ${
-                      txnTypeFilter === 'chi' ? 'bg-card text-orange-600 font-bold' : 'text-muted-foreground'
+                      txnTypeFilter === 'chi' ? 'bg-card text-orange-600 font-bold shadow-xs' : 'text-muted-foreground'
                     }`}
                   >
-                    Nhập hoa (+)
+                    Mua hàng (+)
                   </button>
                   <button
                     type="button"
                     onClick={() => setTxnTypeFilter('thu')}
                     className={`px-2 py-1 rounded-md font-medium ${
-                      txnTypeFilter === 'thu' ? 'bg-card text-emerald-600 font-bold' : 'text-muted-foreground'
+                      txnTypeFilter === 'thu' ? 'bg-card text-emerald-600 font-bold shadow-xs' : 'text-muted-foreground'
                     }`}
                   >
-                    Trả NCC (-)
+                    Trả nợ (-)
                   </button>
                 </div>
               </div>
@@ -1146,10 +1148,10 @@ export default function CongNoNCCPage() {
               {/* Tóm tắt chỉ số nhanh */}
               <div className="flex items-center gap-3 text-xs font-mono">
                 <span className="text-orange-600 font-bold">
-                  Nhập: +{formatNumber(summaryStats.totalImport)}
+                  Mua hàng: +{formatNumber(summaryStats.totalImport)}
                 </span>
                 <span className="text-emerald-600 font-bold">
-                  Đã trả: -{formatNumber(summaryStats.totalPaid)}
+                  Đã trả nợ: -{formatNumber(summaryStats.totalPaid)}
                 </span>
                 <span className="text-rose-600 font-extrabold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded border border-rose-200">
                   Dư nợ: {formatNumber(summaryStats.totalRemainingDebt)} đ
@@ -1201,11 +1203,11 @@ export default function CongNoNCCPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => handleAddNewDebt()}
+                  onClick={() => handleAddNewDebt(undefined, 'chi')}
                   className="h-8 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
                 >
                   <Plus size={14} className="stroke-[2.5px]" />
-                  <span>Trả tiền / Ghi nợ NCC</span>
+                  <span>Mua hàng / Trả nợ NCC</span>
                 </Button>
               </div>
             }
@@ -1242,6 +1244,7 @@ export default function CongNoNCCPage() {
           defaultPartnerType="ncc"
           lockPartnerType={true}
           defaultPartnerId={drawerDefaultPartnerId}
+          defaultTxnType={drawerDefaultTxnType}
         />
       )}
     </div>

@@ -354,7 +354,7 @@ export function NCCDrawer({ isOpen, onClose, supplier, mode = 'create' }: Props)
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                    Tiền nhập hoa
+                    Tiền mua hàng (+)
                   </label>
                   <input
                     type="number"
@@ -368,7 +368,7 @@ export function NCCDrawer({ isOpen, onClose, supplier, mode = 'create' }: Props)
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-muted-foreground mb-1">
-                    Tiền trả NCC
+                    Tiền trả nợ (-)
                   </label>
                   <input
                     type="number"
@@ -383,7 +383,7 @@ export function NCCDrawer({ isOpen, onClose, supplier, mode = 'create' }: Props)
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-border/60">
                 <span className="text-xs font-bold text-foreground">
-                  Công nợ cuối = Nợ cũ + Nhập hoa - Trả NCC:
+                  Công nợ cuối = Nợ cũ + Mua hàng - Trả nợ:
                 </span>
                 <span className={`text-sm font-mono font-extrabold ${finalDebt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                   {formatNumber(finalDebt)}

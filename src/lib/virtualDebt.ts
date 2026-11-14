@@ -170,6 +170,9 @@ export function getRecordReferenceCode(r?: DebtDailyRecord | null): string {
     Boolean(r.referenceCode && (r.referenceCode.startsWith('DH-') || r.referenceCode.startsWith('PO-')));
   if (isOrder) return '';
   const isThu = r.type === 'thu' || ((r.decreaseAmount || 0) > 0 && (r.increaseAmount || 0) === 0);
+  if (r.partnerType === 'ncc') {
+    return isThu ? 'Trả nợ NCC' : 'Mua hàng NCC';
+  }
   if (isThu) return 'Thu nợ đối tác';
-  return r.partnerType === 'ncc' ? 'Nhập hoa NCC' : 'Bán hoa trong ngày';
+  return 'Bán hoa trong ngày';
 }

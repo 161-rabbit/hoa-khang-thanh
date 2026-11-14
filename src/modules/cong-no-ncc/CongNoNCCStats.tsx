@@ -76,7 +76,7 @@ export function CongNoNCCStats() {
     };
   }, [enrichedSuppliers, suppliers.length]);
 
-  // Biểu đồ biến động theo ngày (Tiền nhập hoa vs Tiền trả NCC)
+  // Biểu đồ biến động theo ngày (Tiền mua hàng vs Tiền trả nợ NCC)
   const dailyChartData = useMemo(() => {
     const dates = Array.from(new Set(nccRecords.map((r) => r.date))).sort();
     return dates.map((d) => {
@@ -92,8 +92,8 @@ export function CongNoNCCStats() {
 
       return {
         date: formatDate(d),
-        'Tiền nhập hoa': Math.round(nccNhap * 10) / 10,
-        'Tiền trả NCC': Math.round(nccTra * 10) / 10,
+        'Tiền mua hàng': Math.round(nccNhap * 10) / 10,
+        'Tiền trả nợ': Math.round(nccTra * 10) / 10,
       };
     });
   }, [nccRecords]);
@@ -152,13 +152,13 @@ export function CongNoNCCStats() {
           colorClass="bg-amber-500/10 text-amber-600 border-amber-200 dark:border-amber-900/60"
         />
         <StatCard
-          label="Tổng tiền nhập hoa (+)"
+          label="Tổng tiền mua hàng (+)"
           value={formatNumber(stats.totalImport)}
           icon={ArrowUpRight}
           colorClass="bg-orange-500/10 text-orange-600 border-orange-200 dark:border-orange-900/60"
         />
         <StatCard
-          label="Tổng tiền đã trả NCC (-)"
+          label="Tổng tiền đã trả nợ (-)"
           value={formatNumber(stats.totalPaid)}
           icon={ArrowDownLeft}
           colorClass="bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-900/60"
@@ -175,7 +175,7 @@ export function CongNoNCCStats() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Biểu đồ phát sinh theo ngày */}
         <ChartCard
-          title="Xu hướng Nhập hoa vs Thanh toán NCC theo ngày (Triệu VNĐ)"
+          title="Xu hướng Mua hàng vs Trả nợ NCC theo ngày (Triệu VNĐ)"
           icon={<BarChart3 size={16} className="text-primary" />}
         >
           {ready && dailyChartData.length > 0 ? (
@@ -194,8 +194,8 @@ export function CongNoNCCStats() {
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Tiền nhập hoa" fill="#f97316" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Tiền trả NCC" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Tiền mua hàng" fill="#f97316" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Tiền trả nợ" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (

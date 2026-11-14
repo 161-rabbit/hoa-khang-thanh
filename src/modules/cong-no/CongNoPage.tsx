@@ -277,7 +277,7 @@ export default function CongNoPage() {
         } else if (refCodes.length > 1) {
           refSummary = `${refCodes.length} ${groupType === 'chi' ? 'đơn' : 'phiếu'} (${refCodes.slice(0, 2).join(', ')}${refCodes.length > 2 ? '...' : ''})`;
         } else {
-          refSummary = groupType === 'thu' ? 'Thu nợ đối tác' : (first.partnerType === 'ncc' ? 'Nhập hoa NCC' : 'Bán hoa trong ngày');
+          refSummary = groupType === 'thu' ? (first.partnerType === 'ncc' ? 'Trả nợ NCC' : 'Thu nợ đối tác') : (first.partnerType === 'ncc' ? 'Mua hàng NCC' : 'Bán hoa trong ngày');
         }
 
         aggregatedList.push({
