@@ -460,14 +460,20 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
             : null;
 
           const typeRaw = hasIdCol ? r[4] : r[3];
-          const type = (typeRaw === 'thu' || typeRaw === 'Thu' ? 'thu' : 'chi') as DebtDailyRecord['type'];
+          const typeStr = String(typeRaw || '').trim().toLowerCase();
+          const isThu =
+            typeStr === 'thu' ||
+            typeStr === 'tiền trả' ||
+            typeStr === 'tiền thu' ||
+            typeStr.includes('trả') ||
+            typeStr.includes('thu');
+          const type = (isThu ? 'thu' : 'chi') as DebtDailyRecord['type'];
           const amount = parseSheetNumber(hasIdCol ? r[5] : r[4]) || 0;
           const remDebt = parseSheetNumber(hasIdCol ? r[6] : r[5]) || 0;
           const rawRef = String((hasIdCol ? r[7] : r[6]) || '').trim();
           const creator = String((hasIdCol ? r[8] : r[7]) || '').trim();
           const notes = String((hasIdCol ? r[9] : r[8]) || '').trim();
 
-          const isThu = type === 'thu';
           const isOrderRef = rawRef.startsWith('DH-') || rawRef.startsWith('PO-');
 
           return {
