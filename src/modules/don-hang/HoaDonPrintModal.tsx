@@ -36,8 +36,6 @@ export function HoaDonPrintModal({ isOpen, onClose, order }: Props) {
 
   if (!isOpen || !order) return null;
 
-  const totalQuantity =
-    order.totalQuantity || order.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0;
   const itemsSubtotal =
     order.itemsSubtotal ||
     order.items?.reduce((s, i) => s + (i.amount || (i.unitPrice || 0) * (i.quantity || 0)), 0) ||
@@ -302,8 +300,6 @@ export function HoaDonPrintModal({ isOpen, onClose, order }: Props) {
               <p>
                 <span className="text-gray-600">Ngày đặt:</span>{' '}
                 <span className="font-bold text-gray-900">{formatDate(order.orderDate)}</span>
-                <span className="text-gray-600 ml-4">Tổng SL:</span>{' '}
-                <span className="font-bold text-gray-900 font-mono">{formatNumber(totalQuantity)} cành/bó</span>
               </p>
               <p>
                 <span className="text-gray-600">Khách hàng:</span>{' '}
