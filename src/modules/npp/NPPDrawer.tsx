@@ -100,10 +100,20 @@ export function NPPDrawer({ isOpen, onClose, distributor, mode = 'create' }: Pro
     });
 
     // Hiển thị đơn mới nhất trước (ngày giảm dần), cùng ngày thì mã đơn mới hơn trước.
+    const getOrderDateValue = (value?: string) => {
+      const raw = (value || '').trim();
+      const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (slash) return Date.UTC(Number(slash[3]), Number(slash[2]) - 1, Number(slash[1]));
+      const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+      const parsed = Date.parse(raw);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
     return matchedOrders.sort((a, b) => {
-      const dateA = normalizeToISODate(a.orderDate || '');
-      const dateB = normalizeToISODate(b.orderDate || '');
-      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      const dateA = getOrderDateValue(a.orderDate);
+      const dateB = getOrderDateValue(b.orderDate);
+      if (dateA !== dateB) return dateB - dateA;
       return (b.code || b.id).localeCompare(a.code || a.id, undefined, { numeric: true });
     });
   }, [orders, distributor]);
