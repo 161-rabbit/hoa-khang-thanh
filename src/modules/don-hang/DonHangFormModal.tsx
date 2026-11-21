@@ -649,6 +649,21 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
     );
   }, [isCustomPartner, distributorId, partnerName, orderDate, isOpen, orderToEdit?.id]);
 
+  // Tổng công nợ hiện tại của NPP là số dư của toàn bộ lịch sử giao dịch,
+  // khác với khoản còn thiếu của riêng đơn quá hạn đang được cảnh báo bên dưới.
+  const totalDistributorDebt = useMemo(() => {
+    if (!isOpen || !partnerName || isCustomPartner) return 0;
+    return getDistributorDebtAsOfDate(
+      distributorId,
+      partnerName,
+      undefined,
+      useOrderStore.getState().orders,
+      useDebtStore.getState().records,
+      distributors,
+      orderToEdit?.id,
+    );
+  }, [isCustomPartner, distributorId, partnerName, isOpen, orderToEdit?.id, distributors]);
+
   // Danh sách NPP cho Autocomplete tìm kiếm
   const distributorOptions: PartnerOption[] = useMemo(() => {
     return distributors.map((d) => ({
@@ -1082,6 +1097,10 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
                       <strong className="font-bold text-rose-600 dark:text-rose-400">{debtCheck.earliestUnpaidOrder.daysAgo} ngày</strong>) chưa thanh toán đủ.
                     </p>
 
+                    <p className="mt-1 text-xs font-bold text-rose-800 dark:text-rose-200">
+                      Tổng công nợ hiện tại của NPP: <span className="font-mono">{formatNumber(totalDistributorDebt)}</span>
+                    </p>
+
                     <div className="mt-2.5 pt-2 border-t border-rose-200 dark:border-rose-800/60 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                       <div className="bg-white/80 dark:bg-black/30 p-2 rounded-lg border border-rose-200 dark:border-rose-800">
                         <span className="text-[10px] text-muted-foreground block font-medium">1. Giá trị đơn cũ:</span>
@@ -1096,7 +1115,7 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
                         </span>
                       </div>
                       <div className="bg-rose-100/90 dark:bg-rose-900/40 p-2 rounded-lg border border-rose-300 dark:border-rose-700">
-                        <span className="text-[10px] text-rose-700 dark:text-rose-300 block font-bold">3. Còn thiếu (Chưa trả nợ):</span>
+                        <span className="text-[10px] text-rose-700 dark:text-rose-300 block font-bold">3. Còn thiếu của đơn quá hạn:</span>
                         <span className="font-mono font-black text-rose-700 dark:text-rose-300 text-sm">
                           {formatNumber(debtCheck.earliestUnpaidOrder.remainingDebt)}
                         </span>
