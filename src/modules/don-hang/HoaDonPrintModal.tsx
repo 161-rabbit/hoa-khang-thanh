@@ -146,6 +146,7 @@ export function HoaDonPrintModal({ isOpen, onClose, order }: Props) {
             .col-note { display: table-cell !important; width: 55% !important; }
             .col-flower { width: 35% !important; }
             .col-sl { width: 10% !important; }
+            .col-note input { border: 0 !important; border-bottom: 1px solid #9ca3af !important; border-radius: 0 !important; outline: none !important; box-shadow: none !important; }
             th, td { font-size: 16px !important; padding: 8px !important; }
             .info-section { font-size: 1.1rem !important; }
           `
@@ -324,9 +325,9 @@ export function HoaDonPrintModal({ isOpen, onClose, order }: Props) {
                     <th className="col-stt py-2.5 px-1.5 text-center w-10">STT</th>
                     <th className="col-flower py-2.5 px-2 text-left">Tên hoa</th>
                     <th className="col-sl py-2.5 px-1.5 text-center w-12">SL</th>
-                    <th className="py-2.5 px-2 text-right w-24">Đơn giá</th>
-                    <th className="py-2.5 px-2 text-right w-28">Thành tiền</th>
-                    <th className="py-2.5 px-2 text-left w-24">Ghi chú</th>
+                    <th className="col-gia py-2.5 px-2 text-right w-24">Đơn giá</th>
+                    <th className="col-tien py-2.5 px-2 text-right w-28">Thành tiền</th>
+                    <th className="col-note py-2.5 px-2 text-left w-24">Ghi chú</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -356,7 +357,7 @@ export function HoaDonPrintModal({ isOpen, onClose, order }: Props) {
                         <td className="col-tien py-2 px-2 text-right font-mono font-bold text-gray-900">
                           {formatNumber(amount)}
                         </td>
-                        <td className="py-2 px-2">
+                        <td className="col-note py-2 px-2">
                           <input
                             type="text"
                             value={notes[idx] || ''}
