@@ -85,7 +85,7 @@ export function NPPDrawer({ isOpen, onClose, distributor, mode = 'create' }: Pro
   // Get orders of this NPP from useOrderStore
   const nppOrders = useMemo(() => {
     if (!distributor) return [];
-    return orders.filter((o) => {
+    const matchedOrders = orders.filter((o) => {
       const matchId = o.distributorId === distributor.id;
       const matchName =
         o.distributorName &&
@@ -97,6 +97,14 @@ export function NPPDrawer({ isOpen, onClose, distributor, mode = 'create' }: Pro
         distributor.phone &&
         o.phone.replace(/\s+/g, '') === distributor.phone.replace(/\s+/g, '');
       return matchId || matchName || matchPhone;
+    });
+
+    // Hiển thị đơn mới nhất trước (ngày giảm dần), cùng ngày thì mã đơn mới hơn trước.
+    return matchedOrders.sort((a, b) => {
+      const dateA = normalizeToISODate(a.orderDate || '');
+      const dateB = normalizeToISODate(b.orderDate || '');
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return (b.code || b.id).localeCompare(a.code || a.id, undefined, { numeric: true });
     });
   }, [orders, distributor]);
 
