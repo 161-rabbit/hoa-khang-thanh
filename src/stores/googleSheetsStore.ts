@@ -241,7 +241,9 @@ export function initGoogleSheetsAutoSync() {
   _startSubscriptions(handleStoreChange);
 
   // Mở web: tải dữ liệu từ Google Sheets TRƯỚC (Sheets là chuẩn), tải xong mới cho phép tự đẩy lên.
-  // Tải lỗi (mất mạng...) thì thử lại sau 30 giây, trong lúc đó không đẩy dữ liệu cũ lên.
+  // Tải lỗi (mất mạng, Cloudflare quá hạn mức...) thì thử lại THƯA DẦN: 30s, 1, 2, 4, 8 phút... tối đa 15 phút
+  // (không gọi dồn dập làm vượt hạn mức). Trong lúc đó không đẩy dữ liệu cũ lên.
+  let retryCount = 0;
   const refreshFromSheets = async () => {
     const { autoSync, pullFromSheets } = useGoogleSheetsStore.getState();
     if (!autoSync) {
@@ -257,8 +259,14 @@ export function initGoogleSheetsAutoSync() {
     } finally {
       applyingRemoteData = false;
     }
-    if (ok) initialPullDone = true;
-    else window.setTimeout(() => void refreshFromSheets(), 30000);
+    if (ok) {
+      initialPullDone = true;
+      retryCount = 0;
+    } else {
+      const delay = Math.min(30000 * 2 ** retryCount, 15 * 60 * 1000);
+      retryCount += 1;
+      window.setTimeout(() => void refreshFromSheets(), delay);
+    }
   };
 
   void refreshFromSheets();
