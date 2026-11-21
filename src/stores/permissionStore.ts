@@ -73,6 +73,7 @@ export interface ModuleDefinition {
 }
 
 export const PERMISSION_GROUPS = [
+  { id: 'tongQuan', name: 'Tổng quan' },
   { id: 'banHang', name: 'Bán hàng & Khách hàng' },
   { id: 'muaHang', name: 'Mua hàng & Nhà vườn' },
   { id: 'khoHoa', name: 'Kho hoa & Sản phẩm' },
@@ -81,6 +82,8 @@ export const PERMISSION_GROUPS = [
 ] as const;
 
 export const MODULE_LIST: ModuleDefinition[] = [
+  // Tổng quan
+  { id: 'dashboard', name: 'Dashboard', description: 'Tổng quan doanh số, đơn hàng, tồn kho và hoạt động kinh doanh', group: 'tongQuan', groupName: 'Tổng quan' },
   // Bán hàng
   { id: 'donHang', name: 'Đơn đặt hàng sỉ', description: 'Tạo đơn đặt hoa, lên toa, in hoá đơn, giao hàng', group: 'banHang', groupName: 'Bán hàng & Khách hàng' },
   { id: 'npp', name: 'Nhà phân phối (NPP)', description: 'Danh mục đại lý sỉ, shop hoa, lịch sử mua hàng', group: 'banHang', groupName: 'Bán hàng & Khách hàng' },
@@ -128,6 +131,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Nhân viên Kinh doanh / Bán hàng',
     description: 'Tạo và quản lý đơn đặt hoa sỉ, xem giá bán. Tự động ẩn cột Giá vốn, TT Nhập và Lợi nhuận để bảo mật.',
     permissions: {
+      dashboard: { view: true, create: true, edit: true, delete: true },
       donHang: { view: true, create: true, edit: true, delete: false },
       npp: { view: true, create: true, edit: true, delete: false },
       congNoNPP: { view: true, create: false, edit: false, delete: false },
@@ -161,6 +165,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Quản lý Kho & Vận chuyển',
     description: 'Chỉ xem mặt hàng và số lượng hoa để soạn đơn giao hàng. Ẩn toàn bộ giá nhập, giá bán và lợi nhuận.',
     permissions: {
+      dashboard: { view: true, create: false, edit: false, delete: false },
       tonKho: { view: true, create: true, edit: true, delete: true },
       hoa: { view: true, create: true, edit: true, delete: false },
       donHangNCC: { view: true, create: true, edit: true, delete: false },
@@ -194,6 +199,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Kế toán & Thu quỹ',
     description: 'Toàn quyền Thu - Chi, đối soát công nợ. Xem đầy đủ các cột giá vốn, giá bán, thành tiền và lợi nhuận.',
     permissions: {
+      dashboard: { view: true, create: false, edit: false, delete: false },
       thuChi: { view: true, create: true, edit: true, delete: false },
       congNoNPP: { view: true, create: true, edit: true, delete: false },
       congNoNCC: { view: true, create: true, edit: true, delete: false },
