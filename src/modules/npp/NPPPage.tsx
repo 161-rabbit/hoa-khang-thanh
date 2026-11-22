@@ -3,6 +3,7 @@ import { ModuleHistory } from '@/components/data/ModuleHistory';
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Calendar,
   ChartColumn,
   CheckCircle2,
   Clock,
@@ -61,21 +62,6 @@ export default function NPPPage() {
   const { orders } = useOrderStore();
   const { records: debtRecords } = useDebtStore();
 
-  // Đồng bộ và tính toán chính xác tiền bán hoa, tiền thu nợ, công nợ cuối cho từng NPP từ sổ công nợ & đơn hàng
-  const enrichedDistributors = useMemo(() => {
-    return distributors.map((d) => {
-      const fin = calculateDistributorFinancials(d, debtRecords, orders);
-      return {
-        ...d,
-        oldDebt: fin.oldDebt,
-        salesAmount: fin.salesAmount,
-        collectedAmount: fin.collectedAmount,
-        finalDebt: fin.finalDebt,
-        currentDebt: fin.finalDebt,
-        totalRevenue: fin.totalRevenue,
-      };
-    });
-  }, [distributors, debtRecords, orders]);
   const [activeTab, setActiveTab] = useState<Tab>('danhsach');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -84,7 +70,9 @@ export default function NPPPage() {
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedOrderActivity, setSelectedOrderActivity] = useState<string[]>([]);
-  const [quickActivityTab, setQuickActivityTab] = useState<'all' | 'overdue' | 'recent' | 'none'>('all');
+  const [quickActivityTab, setQuickActivityTab] = useState<'all' | 'overdue' | 'recent' | 'days_4_7' | 'days_8_14' | 'days_15_30' | 'over_30' | 'none'>('all');
+  const [orderDateStart, setOrderDateStart] = useState('');
+  const [orderDateEnd, setOrderDateEnd] = useState('');
 
   // Selection & Columns
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -114,12 +102,11 @@ export default function NPPPage() {
         latestOrderDate: string | null;
         daysAgo: number | null;
         isOverdue: boolean;
-        statusCategory: 'overdue' | 'recent' | 'none';
         orderCount: number;
       }
     >();
 
-    enrichedDistributors.forEach((d) => {
+    distributors.forEach((d) => {
       const matching = orders.filter((o) => {
         const matchId = o.distributorId === d.id;
         const matchName =
@@ -143,7 +130,6 @@ export default function NPPPage() {
           latestOrderDate: null,
           daysAgo: null,
           isOverdue: false,
-          statusCategory: 'none',
           orderCount: 0,
         });
         return;
@@ -165,33 +151,68 @@ export default function NPPPage() {
         latestOrderDate: latest.orderDate,
         daysAgo: days,
         isOverdue,
-        statusCategory: isOverdue ? 'overdue' : 'recent',
         orderCount: matching.length,
       });
     });
 
     return map;
-  }, [enrichedDistributors, orders]);
+  }, [distributors, orders]);
+
+  // Đồng bộ và tính toán chính xác tiền bán hoa, tiền thu nợ, công nợ cuối cho từng NPP từ sổ công nợ & đơn hàng
+  const enrichedDistributors = useMemo(() => {
+    return distributors.map((d) => {
+      const fin = calculateDistributorFinancials(d, debtRecords, orders);
+      const orderInfo = distributorOrderMap.get(d.id);
+      return {
+        ...d,
+        oldDebt: fin.oldDebt,
+        salesAmount: fin.salesAmount,
+        collectedAmount: fin.collectedAmount,
+        finalDebt: fin.finalDebt,
+        currentDebt: fin.finalDebt,
+        totalRevenue: fin.totalRevenue,
+        lastOrderDate: orderInfo?.latestOrderDate ? normalizeToISODate(orderInfo.latestOrderDate) : '',
+        daysSinceLastOrder: orderInfo?.daysAgo ?? undefined,
+      };
+    });
+  }, [distributors, debtRecords, orders, distributorOrderMap]);
 
   // Thống kê nhanh số lượng NPP theo tình trạng lên đơn
   const orderActivityCounts = useMemo(() => {
     let overdue = 0;
     let recent = 0;
+    let days_4_7 = 0;
+    let days_8_14 = 0;
+    let days_15_30 = 0;
+    let over_30 = 0;
     let none = 0;
 
-    enrichedDistributors.forEach((d) => {
+    distributors.forEach((d) => {
       const info = distributorOrderMap.get(d.id);
-      if (!info || info.statusCategory === 'none') {
+      const days = info?.daysAgo ?? null;
+      if (days === null) {
         none++;
-      } else if (info.statusCategory === 'overdue') {
-        overdue++;
       } else {
-        recent++;
+        if (days <= 3) recent++;
+        if (days > 3) overdue++;
+        if (days >= 4 && days <= 7) days_4_7++;
+        else if (days >= 8 && days <= 14) days_8_14++;
+        else if (days >= 15 && days <= 30) days_15_30++;
+        else if (days > 30) over_30++;
       }
     });
 
-    return { overdue, recent, none, total: enrichedDistributors.length };
-  }, [enrichedDistributors, distributorOrderMap]);
+    return {
+      overdue,
+      recent,
+      days_4_7,
+      days_8_14,
+      days_15_30,
+      over_30,
+      none,
+      total: distributors.length,
+    };
+  }, [distributors, distributorOrderMap]);
 
   const tierOptions: FilterOption[] = [
     { label: 'VIP 1 (Kim Cương)', value: 'VIP 1 (Kim Cương)' },
@@ -202,11 +223,11 @@ export default function NPPPage() {
 
   const regionOptions: FilterOption[] = useMemo(() => {
     const map: Record<string, number> = {};
-    enrichedDistributors.forEach((d) => {
+    distributors.forEach((d) => {
       map[d.region] = (map[d.region] || 0) + 1;
     });
     return Object.entries(map).map(([r, count]) => ({ label: r, value: r, count }));
-  }, [enrichedDistributors]);
+  }, [distributors]);
 
   const statusOptions: FilterOption[] = [
     { label: 'Đang hoạt động', value: 'active' },
@@ -217,6 +238,10 @@ export default function NPPPage() {
     return [
       { label: '⚠️ Quá 3 ngày chưa đặt', value: 'overdue', count: orderActivityCounts.overdue },
       { label: 'Đã đặt gần đây (≤ 3 ngày)', value: 'recent', count: orderActivityCounts.recent },
+      { label: '4 – 7 ngày chưa đặt (1 tuần)', value: 'days_4_7', count: orderActivityCounts.days_4_7 },
+      { label: '8 – 14 ngày chưa đặt (2 tuần)', value: 'days_8_14', count: orderActivityCounts.days_8_14 },
+      { label: '15 – 30 ngày chưa đặt (1 tháng)', value: 'days_15_30', count: orderActivityCounts.days_15_30 },
+      { label: 'Quá 30 ngày chưa đặt (> 1 tháng)', value: 'over_30', count: orderActivityCounts.over_30 },
       { label: 'Chưa có đơn hàng', value: 'none', count: orderActivityCounts.none },
     ];
   }, [orderActivityCounts]);
@@ -235,14 +260,48 @@ export default function NPPPage() {
       const matchRegion = selectedRegions.length === 0 || selectedRegions.includes(d.region);
       const matchStatus = selectedStatuses.length === 0 || selectedStatuses.includes(d.status);
 
-      const activityCat = distributorOrderMap.get(d.id)?.statusCategory || 'none';
-      const matchActivity =
-        selectedOrderActivity.length === 0 || selectedOrderActivity.includes(activityCat);
+      const info = distributorOrderMap.get(d.id);
+      const days = info?.daysAgo ?? null;
+      const hasOrder = days !== null && Boolean(info?.latestOrderDate);
 
-      const matchQuickTab =
-        quickActivityTab === 'all' || activityCat === quickActivityTab;
+      // Match quick tab
+      let matchQuickTab = true;
+      if (quickActivityTab === 'overdue') matchQuickTab = days !== null && days > 3;
+      else if (quickActivityTab === 'recent') matchQuickTab = days !== null && days <= 3;
+      else if (quickActivityTab === 'days_4_7') matchQuickTab = days !== null && days >= 4 && days <= 7;
+      else if (quickActivityTab === 'days_8_14') matchQuickTab = days !== null && days >= 8 && days <= 14;
+      else if (quickActivityTab === 'days_15_30') matchQuickTab = days !== null && days >= 15 && days <= 30;
+      else if (quickActivityTab === 'over_30') matchQuickTab = days !== null && days > 30;
+      else if (quickActivityTab === 'none') matchQuickTab = days === null;
 
-      return matchSearch && matchTier && matchRegion && matchStatus && matchActivity && matchQuickTab;
+      // Match multi select
+      let matchActivity = true;
+      if (selectedOrderActivity.length > 0) {
+        matchActivity = selectedOrderActivity.some((val) => {
+          if (val === 'overdue') return days !== null && days > 3;
+          if (val === 'recent') return days !== null && days <= 3;
+          if (val === 'days_4_7') return days !== null && days >= 4 && days <= 7;
+          if (val === 'days_8_14') return days !== null && days >= 8 && days <= 14;
+          if (val === 'days_15_30') return days !== null && days >= 15 && days <= 30;
+          if (val === 'over_30') return days !== null && days > 30;
+          if (val === 'none') return days === null;
+          return false;
+        });
+      }
+
+      // Match date range
+      let matchDateRange = true;
+      if (orderDateStart || orderDateEnd) {
+        if (!hasOrder || !info?.latestOrderDate) {
+          matchDateRange = false;
+        } else {
+          const iso = normalizeToISODate(info.latestOrderDate);
+          if (orderDateStart && iso < orderDateStart) matchDateRange = false;
+          if (orderDateEnd && iso > orderDateEnd) matchDateRange = false;
+        }
+      }
+
+      return matchSearch && matchTier && matchRegion && matchStatus && matchActivity && matchQuickTab && matchDateRange;
     });
   }, [
     enrichedDistributors,
@@ -252,6 +311,8 @@ export default function NPPPage() {
     selectedStatuses,
     selectedOrderActivity,
     quickActivityTab,
+    orderDateStart,
+    orderDateEnd,
     distributorOrderMap,
   ]);
 
@@ -554,7 +615,8 @@ export default function NPPPage() {
     (selectedRegions.length > 0 ? 1 : 0) +
     (selectedStatuses.length > 0 ? 1 : 0) +
     (selectedOrderActivity.length > 0 ? 1 : 0) +
-    (quickActivityTab !== 'all' ? 1 : 0);
+    (quickActivityTab !== 'all' ? 1 : 0) +
+    (orderDateStart || orderDateEnd ? 1 : 0);
 
   const handleClearAllFilters = () => {
     setSelectedTiers([]);
@@ -562,6 +624,8 @@ export default function NPPPage() {
     setSelectedStatuses([]);
     setSelectedOrderActivity([]);
     setQuickActivityTab('all');
+    setOrderDateStart('');
+    setOrderDateEnd('');
     setSearchTerm('');
   };
 
@@ -658,61 +722,145 @@ export default function NPPPage() {
             }
           />
 
-          {/* Quick pills bar: Xem nhanh NPP quá 3 ngày chưa nhập thêm hoa */}
-          <div className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-muted/20 border-b border-border/60 overflow-x-auto text-xs shrink-0">
-            <span className="text-muted-foreground font-medium text-[11px] whitespace-nowrap flex items-center gap-1 mr-1">
-              <Clock size={12} className="text-primary" />
-              Lên đơn gần nhất:
-            </span>
-            <button
-              type="button"
-              onClick={() => setQuickActivityTab('all')}
-              className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
-                quickActivityTab === 'all'
-                  ? 'bg-foreground text-background shadow-xs'
-                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              Tất cả ({orderActivityCounts.total})
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickActivityTab(quickActivityTab === 'overdue' ? 'all' : 'overdue')}
-              className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
-                quickActivityTab === 'overdue'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : orderActivityCounts.overdue > 0
-                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800 hover:bg-rose-200'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-              title="Xem danh sách nhà phân phối quá 3 ngày chưa nhập thêm hoa"
-            >
-              <AlertTriangle size={12} className={quickActivityTab === 'overdue' ? 'text-white' : 'text-rose-600'} />
-              Quá 3 ngày chưa đặt ({orderActivityCounts.overdue})
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickActivityTab(quickActivityTab === 'recent' ? 'all' : 'recent')}
-              className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                quickActivityTab === 'recent'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
-              }`}
-            >
-              <CheckCircle2 size={12} className={quickActivityTab === 'recent' ? 'text-white' : 'text-emerald-600'} />
-              Đã đặt ≤ 3 ngày ({orderActivityCounts.recent})
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuickActivityTab(quickActivityTab === 'none' ? 'all' : 'none')}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
-                quickActivityTab === 'none'
-                  ? 'bg-slate-700 text-white shadow-xs'
-                  : 'bg-muted/60 text-muted-foreground border border-border/70 hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              Chưa có đơn ({orderActivityCounts.none})
-            </button>
+          {/* Quick pills bar: Xem nhanh NPP theo tình trạng lên đơn gần nhất */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-muted/20 border-b border-border/60 text-xs shrink-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+              <span className="text-muted-foreground font-medium text-[11px] whitespace-nowrap flex items-center gap-1 mr-1">
+                <Clock size={12} className="text-primary" />
+                Lên đơn gần nhất:
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab('all')}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
+                  quickActivityTab === 'all'
+                    ? 'bg-foreground text-background shadow-xs'
+                    : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                Tất cả ({orderActivityCounts.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'overdue' ? 'all' : 'overdue')}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  quickActivityTab === 'overdue'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : orderActivityCounts.overdue > 0
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800 hover:bg-rose-200'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                }`}
+                title="Xem danh sách nhà phân phối quá 3 ngày chưa đặt hàng"
+              >
+                <AlertTriangle size={12} className={quickActivityTab === 'overdue' ? 'text-white' : 'text-rose-600'} />
+                Quá 3 ngày chưa đặt ({orderActivityCounts.overdue})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'recent' ? 'all' : 'recent')}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  quickActivityTab === 'recent'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                }`}
+              >
+                <CheckCircle2 size={12} className={quickActivityTab === 'recent' ? 'text-white' : 'text-emerald-600'} />
+                Đã đặt ≤ 3 ngày ({orderActivityCounts.recent})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'days_4_7' ? 'all' : 'days_4_7')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  quickActivityTab === 'days_4_7'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100'
+                }`}
+                title="Các NPP có đơn gần nhất cách đây 4 - 7 ngày (1 tuần)"
+              >
+                4 – 7 ngày ({orderActivityCounts.days_4_7})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'days_8_14' ? 'all' : 'days_8_14')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  quickActivityTab === 'days_8_14'
+                    ? 'bg-orange-600 text-white shadow-xs'
+                    : 'bg-orange-50 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 hover:bg-orange-100'
+                }`}
+                title="Các NPP có đơn gần nhất cách đây 8 - 14 ngày (2 tuần)"
+              >
+                8 – 14 ngày ({orderActivityCounts.days_8_14})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'days_15_30' ? 'all' : 'days_15_30')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  quickActivityTab === 'days_15_30'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-purple-50 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 hover:bg-purple-100'
+                }`}
+                title="Các NPP có đơn gần nhất cách đây 15 - 30 ngày (1 tháng)"
+              >
+                15 – 30 ngày ({orderActivityCounts.days_15_30})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'over_30' ? 'all' : 'over_30')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  quickActivityTab === 'over_30'
+                    ? 'bg-red-700 text-white shadow-xs'
+                    : 'bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800/60 hover:bg-red-100'
+                }`}
+                title="Các NPP có đơn gần nhất cách đây quá 30 ngày"
+              >
+                &gt; 30 ngày ({orderActivityCounts.over_30})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'none' ? 'all' : 'none')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  quickActivityTab === 'none'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'bg-muted/60 text-muted-foreground border border-border/70 hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                Chưa có đơn ({orderActivityCounts.none})
+              </button>
+            </div>
+
+            {/* Bộ lọc khoảng ngày theo đơn gần nhất */}
+            <div className="flex items-center gap-1.5 shrink-0 bg-background/90 px-2 py-1 rounded-lg border border-border/70 shadow-2xs">
+              <Calendar size={13} className="text-primary shrink-0" />
+              <span className="text-[11px] text-muted-foreground font-medium whitespace-nowrap">Khoảng ngày đơn:</span>
+              <input
+                type="date"
+                value={orderDateStart}
+                onChange={(e) => setOrderDateStart(e.target.value)}
+                className="h-6 px-1.5 text-xs rounded border border-border bg-card text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                title="Đơn gần nhất từ ngày"
+              />
+              <span className="text-xs text-muted-foreground">-</span>
+              <input
+                type="date"
+                value={orderDateEnd}
+                onChange={(e) => setOrderDateEnd(e.target.value)}
+                className="h-6 px-1.5 text-xs rounded border border-border bg-card text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                title="Đơn gần nhất đến ngày"
+              />
+              {(orderDateStart || orderDateEnd) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderDateStart('');
+                    setOrderDateEnd('');
+                  }}
+                  className="h-6 px-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded transition-colors"
+                  title="Xóa lọc khoảng ngày"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 min-h-0">
