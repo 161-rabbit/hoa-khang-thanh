@@ -36,6 +36,7 @@ import { formatDate, todayISODate } from '@/lib/format';
 import { CongNoDrawer } from '../cong-no/CongNoDrawer';
 import { getRecordReferenceCode, useAllDebtRecords } from '@/lib/virtualDebt';
 import { CongNoNCCStats } from './CongNoNCCStats';
+import { triggerImmediateSync } from '@/stores/googleSheetsStore';
 
 type Tab = 'soghi' | 'tonghop' | 'thongke' | 'lichsu';
 
@@ -486,6 +487,7 @@ export default function CongNoNCCPage() {
         )
       ) {
         r.childRecords.forEach((c) => deleteRecord(c.id));
+        triggerImmediateSync(['debtRecords']);
         toast.success(`Đã xóa các phát sinh công nợ ngày ${formatDate(r.date)}`);
       }
       return;
@@ -493,6 +495,7 @@ export default function CongNoNCCPage() {
     const targetId = r.childRecords && r.childRecords[0] ? r.childRecords[0].id : r.id;
     if (confirm(`Xác nhận xóa bản ghi công nợ ngày ${formatDate(r.date)} của ${r.partnerName}?`)) {
       deleteRecord(targetId);
+      triggerImmediateSync(['debtRecords']);
       toast.success('Đã xóa bản ghi công nợ NCC');
     }
   };
@@ -1172,6 +1175,7 @@ export default function CongNoNCCPage() {
               if (confirm(`Xác nhận xóa ${selectedIds.size} bản ghi công nợ NCC đã chọn?`)) {
                 selectedIds.forEach((id) => deleteRecord(id));
                 setSelectedIds(new Set());
+                triggerImmediateSync(['debtRecords']);
                 toast.success('Đã xóa các bản ghi công nợ đã chọn');
               }
             }}

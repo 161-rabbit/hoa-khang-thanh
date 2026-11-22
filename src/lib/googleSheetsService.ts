@@ -127,34 +127,59 @@ export async function checkGoogleSheetsConnection(): Promise<GoogleSheetsStatus>
   }
 }
 
+export type SyncableModule =
+  | 'orders'
+  | 'flowers'
+  | 'distributors'
+  | 'suppliers'
+  | 'supplierOrders'
+  | 'debtRecords'
+  | 'transactions'
+  | 'inventory'
+  | 'employees';
+
 /**
- * Đẩy toàn bộ dữ liệu từ các store trên Web lên 11 sheets của Google Spreadsheet
+ * Đẩy dữ liệu từ store trên Web lên Google Sheets (hỗ trợ đồng bộ mục tiêu từng module hoặc toàn bộ 11 sheets)
  */
-
-export async function syncAllToGoogleSheets(): Promise<SyncResult> {
+export async function syncAllToGoogleSheets(modules?: SyncableModule[]): Promise<SyncResult> {
   try {
-    const orders = useOrderStore.getState().orders;
-    const flowers = useFlowerStore.getState().flowers;
-    const distributors = useDistributorStore.getState().distributors;
-    const suppliers = useSupplierStore.getState().suppliers;
-    const supplierOrders = useSupplierOrderStore.getState().orders;
-    const debtRecords = useDebtStore.getState().records;
-    const transactions = useCashStore.getState().transactions;
-    const inventory = useInventoryStore.getState().inventory;
-    const employees = useEmployeeStore.getState().employees;
+    const shouldSync = (m: SyncableModule) => !modules || modules.length === 0 || modules.includes(m);
 
-    // Lịch sử thao tác CHỈ lưu trên web, không ghi lên Google Sheets (sheet LICH_SU_THAO_TAC không còn được cập nhật).
-    const payload = {
-      orders,
-      flowers,
-      distributors,
-      suppliers,
-      supplierOrders,
-      debtRecords,
-      transactions,
-      inventory,
-      employees,
-    };
+    const payload: Record<string, any> = {};
+
+    if (shouldSync('orders')) {
+      payload.orders = useOrderStore.getState().orders;
+    }
+    if (shouldSync('flowers')) {
+      payload.flowers = useFlowerStore.getState().flowers;
+    }
+    if (shouldSync('distributors')) {
+      payload.distributors = useDistributorStore.getState().distributors;
+    }
+    if (shouldSync('suppliers')) {
+      payload.suppliers = useSupplierStore.getState().suppliers;
+    }
+    if (shouldSync('supplierOrders')) {
+      // LOẠI BỎ imageUrl (ảnh base64 nặng hàng megabyte) trước khi gửi lên API để tránh lỗi 413 Request Entity Too Large
+      const rawSupplierOrders = useSupplierOrderStore.getState().orders;
+      payload.supplierOrders = rawSupplierOrders.map((so) => {
+        if (!so.imageUrl) return so;
+        const { imageUrl: _, ...cleanOrder } = so;
+        return cleanOrder;
+      });
+    }
+    if (shouldSync('debtRecords')) {
+      payload.debtRecords = useDebtStore.getState().records;
+    }
+    if (shouldSync('transactions')) {
+      payload.transactions = useCashStore.getState().transactions;
+    }
+    if (shouldSync('inventory')) {
+      payload.inventory = useInventoryStore.getState().inventory;
+    }
+    if (shouldSync('employees')) {
+      payload.employees = useEmployeeStore.getState().employees;
+    }
 
     const res = await fetch('/api/google-sheets/sync-all', {
       method: 'POST',
@@ -162,11 +187,27 @@ export async function syncAllToGoogleSheets(): Promise<SyncResult> {
       body: JSON.stringify(payload),
     });
 
-    const result = await res.json();
+    const text = await res.text();
+    let result: any = null;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      return {
+        success: false,
+        error: res.status === 413
+          ? 'Dung lượng gửi lên quá lớn (Request Entity Too Large). Hệ thống đã tự động lọc bớt ảnh nặng.'
+          : `Máy chủ phản hồi mã ${res.status} (${res.statusText}): ${text.slice(0, 100)}`,
+      };
+    }
+
     if (!res.ok || !result.success) {
       return {
         success: false,
-        error: result.error ? JSON.stringify(result.error) : 'Không thể đồng bộ lên Google Sheets',
+        error: result.error
+          ? typeof result.error === 'string'
+            ? result.error
+            : JSON.stringify(result.error)
+          : 'Không thể đồng bộ lên Google Sheets',
       };
     }
 

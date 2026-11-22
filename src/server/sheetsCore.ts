@@ -127,6 +127,12 @@ export interface ApiResult {
  * POST /api/google-sheets/sync-all
  * GET  /api/google-sheets/pull-all
  */
+// Cache metadata sheet danh sách bảng (5 phút) để tăng tốc độ ghi dữ liệu
+let cachedSheetsMeta: {
+  sheets: Array<{ properties: { sheetId: number; title: string; gridProperties: { rowCount: number; columnCount: number } } }>;
+  timestamp: number;
+} | null = null;
+
 export async function handleSheetsApi(
   method: string,
   pathname: string,
@@ -167,17 +173,46 @@ export async function handleSheetsApi(
       const token = await getAccessToken(cfg);
       const batchData = buildSheetTables(((await readJson()) || {}) as SheetSyncBody);
 
-      // Ghi đè từng bảng từ dòng 2, giữ dòng tiêu đề và định dạng
-      const metaRes = await fetch(`${api}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
-      const meta = (await metaRes.json()) as {
-        sheets?: Array<{ properties: { sheetId: number; title: string; gridProperties: { rowCount: number; columnCount: number } } }>;
-      };
-      if (!metaRes.ok) return { status: 500, body: { success: false, error: meta } };
+      if (batchData.length === 0) {
+        return {
+          status: 200,
+          body: { success: true, totalUpdatedCells: 0, updatedSheetsCount: 0, timestamp: new Date().toISOString() },
+        };
+      }
+
+      // Tận dụng cache metadata (hợp lệ 5 phút) để tăng tốc ghi, tránh gọi GET thừa
+      const now = Date.now();
+      let metaSheets = cachedSheetsMeta && now - cachedSheetsMeta.timestamp < 300000
+        ? cachedSheetsMeta.sheets
+        : null;
+
+      if (!metaSheets) {
+        const metaRes = await fetch(`${api}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
+        const meta = (await metaRes.json()) as {
+          sheets?: Array<{ properties: { sheetId: number; title: string; gridProperties: { rowCount: number; columnCount: number } } }>;
+        };
+        if (!metaRes.ok) return { status: 500, body: { success: false, error: meta } };
+        metaSheets = meta.sheets || [];
+        cachedSheetsMeta = { sheets: metaSheets, timestamp: now };
+      }
 
       const requests: unknown[] = [];
       for (const table of batchData) {
         const title = table.range.split('!')[0];
-        let sheet = meta.sheets?.find((s) => s.properties.title === title)?.properties;
+        let sheet = metaSheets.find((s) => s.properties.title === title)?.properties;
+        if (!sheet) {
+          // Thử refresh metadata một lần nếu chưa thấy trong cache
+          const refreshRes = await fetch(`${api}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
+          const refreshMeta = (await refreshRes.json()) as {
+            sheets?: Array<{ properties: { sheetId: number; title: string; gridProperties: { rowCount: number; columnCount: number } } }>;
+          };
+          if (refreshMeta.sheets) {
+            metaSheets = refreshMeta.sheets;
+            cachedSheetsMeta = { sheets: metaSheets, timestamp: Date.now() };
+            sheet = metaSheets.find((s) => s.properties.title === title)?.properties;
+          }
+        }
+
         if (!sheet) {
           // Tự tạo sheet mới nếu chưa có trên Spreadsheet
           const addRes = await fetch(`${api}:batchUpdate`, {
@@ -199,8 +234,8 @@ export async function handleSheetsApi(
           const addData = (await addRes.json()) as { replies?: Array<{ addSheet?: { properties: any } }> };
           if (addData.replies?.[0]?.addSheet?.properties) {
             sheet = addData.replies[0].addSheet.properties;
-            meta.sheets = meta.sheets || [];
-            meta.sheets.push({ properties: sheet as any });
+            metaSheets.push({ properties: sheet as any });
+            cachedSheetsMeta = { sheets: metaSheets, timestamp: Date.now() };
           } else {
             throw new Error(`Không tìm thấy và không thể tạo sheet ${title}`);
           }
