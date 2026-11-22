@@ -24,6 +24,7 @@ import { DataTable } from '@/components/data/DataTable';
 import { MultiSelectFilter, type FilterOption } from '@/components/ui/MultiSelectFilter';
 import type { ColumnDef } from '@/stores/createListStore';
 import { useColumnSettings } from '@/hooks/useColumnSettings';
+import { useUserPermissions } from '@/stores/permissionStore';
 import {
   calculateDistributorFinancials,
   clearAllDebtAndOrderData,
@@ -58,6 +59,7 @@ const INITIAL_COLUMNS: ColumnDef[] = [
 ];
 
 export default function NPPPage() {
+  const perms = useUserPermissions('npp');
   const { distributors, deleteDistributor } = useDistributorStore();
   const { orders } = useOrderStore();
   const { records: debtRecords } = useDebtStore();
@@ -331,6 +333,10 @@ export default function NPPPage() {
   };
 
   const handleDeleteMany = () => {
+    if (!perms.delete) {
+      toast.error('Bạn không có quyền xóa nhà phân phối!');
+      return;
+    }
     if (confirm(`Bạn có chắc muốn xóa ${selectedIds.size} nhà phân phối đã chọn?`)) {
       selectedIds.forEach((id) => deleteDistributor(id));
       setSelectedIds(new Set());
@@ -339,12 +345,20 @@ export default function NPPPage() {
   };
 
   const handleAddNew = () => {
+    if (!perms.create) {
+      toast.error('Bạn không có quyền thêm mới nhà phân phối!');
+      return;
+    }
     setSelectedDistributor(null);
     setDrawerMode('create');
     setIsDrawerOpen(true);
   };
 
   const handleEdit = (d: Distributor) => {
+    if (!perms.edit) {
+      toast.error('Bạn không có quyền chỉnh sửa nhà phân phối!');
+      return;
+    }
     setSelectedDistributor(d);
     setDrawerMode('edit');
     setIsDrawerOpen(true);
@@ -357,6 +371,10 @@ export default function NPPPage() {
   };
 
   const handleDelete = (d: Distributor) => {
+    if (!perms.delete) {
+      toast.error('Bạn không có quyền xóa nhà phân phối!');
+      return;
+    }
     if (confirm(`Bạn có chắc muốn xóa đại lý "${d.name}"?`)) {
       deleteDistributor(d.id);
       toast.success(`Đã xóa đại lý ${d.name}`);
@@ -508,22 +526,26 @@ export default function NPPPage() {
       case 'actions':
         return (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleEdit(row)}
-              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
-              title="Chỉnh sửa"
-            >
-              <SquarePen size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDelete(row)}
-              className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-              title="Xóa"
-            >
-              <Trash2 size={14} />
-            </button>
+            {perms.edit && (
+              <button
+                type="button"
+                onClick={() => handleEdit(row)}
+                className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                title="Chỉnh sửa"
+              >
+                <SquarePen size={14} />
+              </button>
+            )}
+            {perms.delete && (
+              <button
+                type="button"
+                onClick={() => handleDelete(row)}
+                className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                title="Xóa"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         );
       default:
@@ -629,6 +651,20 @@ export default function NPPPage() {
     setSearchTerm('');
   };
 
+  if (!perms.view) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center justify-center mb-4">
+          <AlertTriangle size={28} />
+        </div>
+        <h2 className="text-lg font-bold text-foreground mb-1">Chưa được cấp quyền xem Nhà phân phối</h2>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Tài khoản của bạn hiện chưa được Quản trị viên cấp quyền xem dữ liệu Nhà phân phối (NPP). Vui lòng liên hệ Admin để được phân quyền.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
       <div className="px-3 sm:px-4 pt-3 pb-1 shrink-0 bg-background">
@@ -662,30 +698,34 @@ export default function NPPPage() {
             onClearAllFilters={handleClearAllFilters}
             actions={
               <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (confirm('Bạn có chắc chắn muốn đặt lại toàn bộ số liệu công nợ của tất cả NPP về 0?')) {
-                      clearAllDebtAndOrderData();
-                      toast.success('Đã đưa công nợ của tất cả NPP về 0!');
-                    }
-                  }}
-                  className="h-8 gap-1 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                  title="Đặt lại toàn bộ số liệu công nợ về 0"
-                >
-                  <RotateCcw size={13} />
-                  <span className="hidden sm:inline">Đặt lại nợ về 0</span>
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleAddNew}
-                  className="h-8 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                >
-                  <Plus size={14} className="stroke-[2.5px]" />
-                  <span>Thêm mới</span>
-                </Button>
+                {perms.delete && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (confirm('Bạn có chắc chắn muốn đặt lại toàn bộ số liệu công nợ của tất cả NPP về 0?')) {
+                        clearAllDebtAndOrderData();
+                        toast.success('Đã đưa công nợ của tất cả NPP về 0!');
+                      }
+                    }}
+                    className="h-8 gap-1 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                    title="Đặt lại toàn bộ số liệu công nợ về 0"
+                  >
+                    <RotateCcw size={13} />
+                    <span className="hidden sm:inline">Đặt lại nợ về 0</span>
+                  </Button>
+                )}
+                {perms.create && (
+                  <Button
+                    size="sm"
+                    onClick={handleAddNew}
+                    className="h-8 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                  >
+                    <Plus size={14} className="stroke-[2.5px]" />
+                    <span>Thêm mới</span>
+                  </Button>
+                )}
               </div>
             }
             filters={

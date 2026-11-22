@@ -24,6 +24,7 @@ import { DataTable } from '@/components/data/DataTable';
 import { ModuleHistory } from '@/components/data/ModuleHistory';
 import type { ColumnDef } from '@/stores/createListStore';
 import { useColumnSettings } from '@/hooks/useColumnSettings';
+import { useUserPermissions } from '@/stores/permissionStore';
 import {
   calculateSupplierFinancials,
   syncAllOrdersToDebtRecords,
@@ -62,6 +63,7 @@ const NCC_COLUMNS: ColumnDef[] = [
 ];
 
 export default function CongNoNCCPage() {
+  const perms = useUserPermissions('congNoNCC');
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -446,6 +448,10 @@ export default function CongNoNCCPage() {
 
   // Mở Drawer thêm mới: Mua hàng / Trả nợ NCC
   const handleAddNewDebt = (targetNccId?: string, defaultTxnType: 'thu' | 'chi' = 'chi') => {
+    if (!perms.create) {
+      toast.error('Bạn không có quyền tạo bản ghi công nợ mới!');
+      return;
+    }
     setSelectedRecord(null);
     setDrawerDefaultPartnerId(targetNccId || (selectedPartnerId !== 'all' ? selectedPartnerId : undefined));
     setDrawerDefaultTxnType(defaultTxnType);
@@ -454,6 +460,10 @@ export default function CongNoNCCPage() {
   };
 
   const handleEdit = (r: DebtDailyRecord) => {
+    if (!perms.edit) {
+      toast.error('Bạn không có quyền chỉnh sửa công nợ NCC!');
+      return;
+    }
     if (isLocked(r)) {
       toast.info(lockedMessage(r));
       return;
@@ -476,6 +486,10 @@ export default function CongNoNCCPage() {
   };
 
   const handleDelete = (r: DebtDailyRecord) => {
+    if (!perms.delete) {
+      toast.error('Bạn không có quyền xóa công nợ NCC!');
+      return;
+    }
     if (isLocked(r)) {
       toast.info(lockedMessage(r));
       return;
@@ -701,22 +715,26 @@ export default function CongNoNCCPage() {
         }
         return (
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleEdit(row)}
-              className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
-              title="Chỉnh sửa phiếu ghi nợ"
-            >
-              <SquarePen size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDelete(row)}
-              className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-              title="Xóa phiếu ghi nợ"
-            >
-              <Trash2 size={14} />
-            </button>
+            {perms.edit && (
+              <button
+                type="button"
+                onClick={() => handleEdit(row)}
+                className="p-1 rounded text-primary hover:bg-primary/10 transition-colors"
+                title="Chỉnh sửa phiếu ghi nợ"
+              >
+                <SquarePen size={14} />
+              </button>
+            )}
+            {perms.delete && (
+              <button
+                type="button"
+                onClick={() => handleDelete(row)}
+                className="p-1 rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                title="Xóa phiếu ghi nợ"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         );
       default:
@@ -770,6 +788,20 @@ export default function CongNoNCCPage() {
       </div>
     );
   };
+
+  if (!perms.view) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center justify-center mb-4">
+          <Receipt size={28} />
+        </div>
+        <h2 className="text-lg font-bold text-foreground mb-1">Chưa được cấp quyền xem Công nợ NCC</h2>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Tài khoản của bạn hiện chưa được Quản trị viên cấp quyền xem dữ liệu Công nợ Nhà cung cấp. Vui lòng liên hệ Admin để được phân quyền.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
@@ -1205,14 +1237,16 @@ export default function CongNoNCCPage() {
                   <Download size={13} />
                   <span className="hidden sm:inline">Xuất Excel</span>
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleAddNewDebt(undefined, 'chi')}
-                  className="h-8 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-                >
-                  <Plus size={14} className="stroke-[2.5px]" />
-                  <span>Mua hàng / Trả nợ NCC</span>
-                </Button>
+                {perms.create && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleAddNewDebt(undefined, 'chi')}
+                    className="h-8 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                  >
+                    <Plus size={14} className="stroke-[2.5px]" />
+                    <span>Mua hàng / Trả nợ NCC</span>
+                  </Button>
+                )}
               </div>
             }
           />
