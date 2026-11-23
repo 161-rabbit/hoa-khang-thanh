@@ -7,6 +7,7 @@ import {
   ChartColumn,
   CheckCircle2,
   Clock,
+  Coins,
   List,
   MapPin,
   Plus,
@@ -35,7 +36,7 @@ import {
 } from '@/stores/hoaKhangThanhStore';
 import type { Distributor, Order } from '@/types/hoaKhangThanh';
 import { getDaysDifference } from '@/lib/debtCheck';
-import { formatDate } from '@/lib/format';
+import { formatDate, parseDateTimestamp } from '@/lib/format';
 import { NPPDrawer } from './NPPDrawer';
 import { NPPStats } from './NPPStats';
 
@@ -47,15 +48,16 @@ const INITIAL_COLUMNS: ColumnDef[] = [
   { id: 'representative', label: 'Người đại diện', visible: true, minWidth: 120, width: 130, order: 2 },
   { id: 'phone', label: 'Số điện thoại', visible: true, minWidth: 110, width: 120, order: 3 },
   { id: 'lastOrder', label: 'Đơn gần nhất', visible: true, minWidth: 150, width: 165, order: 4 },
-  { id: 'oldDebt', label: 'Công nợ cũ', visible: true, minWidth: 115, width: 125, order: 5 },
-  { id: 'salesAmount', label: 'Tiền bán hoa', visible: true, minWidth: 125, width: 135, order: 6 },
-  { id: 'collectedAmount', label: 'Tiền thu nợ', visible: true, minWidth: 120, width: 130, order: 7 },
-  { id: 'finalDebt', label: 'Công nợ cuối', visible: true, minWidth: 125, width: 135, order: 8 },
-  { id: 'status', label: 'Trạng thái', visible: true, minWidth: 105, width: 115, order: 9 },
-  { id: 'actions', label: 'Thao tác', visible: true, minWidth: 80, width: 85, order: 10 },
-  { id: 'region', label: 'Khu vực', visible: false, minWidth: 120, width: 130, order: 11 },
-  { id: 'tier', label: 'Cấp đại lý', visible: false, minWidth: 130, width: 140, order: 12 },
-  { id: 'discount', label: 'Chiết khấu', visible: false, minWidth: 90, width: 100, order: 13 },
+  { id: 'lastPayment', label: 'Ngày trả nợ gần nhất', visible: true, minWidth: 165, width: 185, order: 5 },
+  { id: 'oldDebt', label: 'Công nợ cũ', visible: true, minWidth: 115, width: 125, order: 6 },
+  { id: 'salesAmount', label: 'Tiền bán hoa', visible: true, minWidth: 125, width: 135, order: 7 },
+  { id: 'collectedAmount', label: 'Tiền thu nợ', visible: true, minWidth: 120, width: 130, order: 8 },
+  { id: 'finalDebt', label: 'Công nợ cuối', visible: true, minWidth: 125, width: 135, order: 9 },
+  { id: 'status', label: 'Trạng thái', visible: true, minWidth: 105, width: 115, order: 10 },
+  { id: 'actions', label: 'Thao tác', visible: true, minWidth: 80, width: 85, order: 11 },
+  { id: 'region', label: 'Khu vực', visible: false, minWidth: 120, width: 130, order: 12 },
+  { id: 'tier', label: 'Cấp đại lý', visible: false, minWidth: 130, width: 140, order: 13 },
+  { id: 'discount', label: 'Chiết khấu', visible: false, minWidth: 90, width: 100, order: 14 },
 ];
 
 export default function NPPPage() {
@@ -72,7 +74,9 @@ export default function NPPPage() {
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedOrderActivity, setSelectedOrderActivity] = useState<string[]>([]);
-  const [quickActivityTab, setQuickActivityTab] = useState<'all' | 'overdue' | 'recent' | 'days_4_7' | 'days_8_14' | 'days_15_30' | 'over_30' | 'none'>('all');
+  const [quickActivityTab, setQuickActivityTab] = useState<
+    'all' | 'overdue' | 'over_10_order' | 'over_10_debt' | 'recent' | 'days_4_7' | 'days_8_14' | 'days_15_30' | 'over_30' | 'none'
+  >('all');
   const [orderDateStart, setOrderDateStart] = useState('');
   const [orderDateEnd, setOrderDateEnd] = useState('');
 
@@ -160,11 +164,99 @@ export default function NPPPage() {
     return map;
   }, [distributors, orders]);
 
+  // Theo dõi ngày trả nợ gần nhất của từng NPP (Từ phiếu thu nợ hoặc thanh toán đơn hàng)
+  const distributorPaymentMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        latestPaymentDate: string | null;
+        latestPaymentAmount: number;
+        daysAgo: number | null;
+        isOverdue10: boolean;
+        paymentCount: number;
+        source: 'debt_receipt' | 'order' | null;
+      }
+    >();
+
+    distributors.forEach((d) => {
+      const normName = d.name ? d.name.trim().toLowerCase() : '';
+      const payments: { date: string; amount: number; source: 'debt_receipt' | 'order'; code?: string }[] = [];
+
+      // 1. Từ sổ công nợ (phiếu thu / trả nợ)
+      debtRecords.forEach((r) => {
+        if (r.partnerType !== 'npp') return;
+        const matchId = r.partnerId === d.id;
+        const matchCode = r.partnerCode && r.partnerCode === d.code;
+        const matchName = r.partnerName && r.partnerName.trim().toLowerCase() === normName;
+        if (!matchId && !matchCode && !matchName) return;
+
+        const isThu = r.type === 'thu' || ((r.decreaseAmount || 0) > 0 && (r.increaseAmount || 0) === 0);
+        const amt = r.decreaseAmount !== undefined ? r.decreaseAmount : (isThu ? (r.amount || 0) : 0);
+        if (isThu && amt > 0) {
+          const dt = r.date;
+          if (dt) payments.push({ date: dt, amount: amt, source: 'debt_receipt', code: r.referenceCode || r.id });
+        }
+      });
+
+      // 2. Từ đơn hàng đã thanh toán (paidAmount > 0)
+      orders.forEach((o) => {
+        if (o.status === 'huy' || o.status === 'cancelled') return;
+        const matchId = o.distributorId === d.id;
+        const matchName =
+          o.distributorName &&
+          (o.distributorName.toLowerCase() === d.name.toLowerCase() ||
+            d.name.toLowerCase().includes(o.distributorName.toLowerCase()) ||
+            o.distributorName.toLowerCase().includes(d.name.toLowerCase()));
+        if (!matchId && !matchName) return;
+
+        const paid = o.paidAmount || 0;
+        if (paid > 0 && o.orderDate) {
+          payments.push({ date: o.orderDate, amount: paid, source: 'order', code: o.code });
+        }
+      });
+
+      if (payments.length === 0) {
+        map.set(d.id, {
+          latestPaymentDate: null,
+          latestPaymentAmount: 0,
+          daysAgo: null,
+          isOverdue10: false,
+          paymentCount: 0,
+          source: null,
+        });
+        return;
+      }
+
+      // Sắp xếp ngày trả nợ mới nhất lên đầu
+      payments.sort((a, b) => {
+        const timeA = parseDateTimestamp(a.date) ?? 0;
+        const timeB = parseDateTimestamp(b.date) ?? 0;
+        return timeB - timeA;
+      });
+
+      const latest = payments[0];
+      const days = Math.max(0, getDaysDifference(latest.date));
+      const isOverdue10 = days > 10;
+
+      map.set(d.id, {
+        latestPaymentDate: latest.date,
+        latestPaymentAmount: latest.amount,
+        daysAgo: days,
+        isOverdue10,
+        paymentCount: payments.length,
+        source: latest.source,
+      });
+    });
+
+    return map;
+  }, [distributors, debtRecords, orders]);
+
   // Đồng bộ và tính toán chính xác tiền bán hoa, tiền thu nợ, công nợ cuối cho từng NPP từ sổ công nợ & đơn hàng
   const enrichedDistributors = useMemo(() => {
     return distributors.map((d) => {
       const fin = calculateDistributorFinancials(d, debtRecords, orders);
       const orderInfo = distributorOrderMap.get(d.id);
+      const paymentInfo = distributorPaymentMap.get(d.id);
       return {
         ...d,
         oldDebt: fin.oldDebt,
@@ -175,13 +267,17 @@ export default function NPPPage() {
         totalRevenue: fin.totalRevenue,
         lastOrderDate: orderInfo?.latestOrderDate ? normalizeToISODate(orderInfo.latestOrderDate) : '',
         daysSinceLastOrder: orderInfo?.daysAgo ?? undefined,
+        lastPaymentDate: paymentInfo?.latestPaymentDate ? normalizeToISODate(paymentInfo.latestPaymentDate) : '',
+        daysSinceLastPayment: paymentInfo?.daysAgo ?? undefined,
       };
     });
-  }, [distributors, debtRecords, orders, distributorOrderMap]);
+  }, [distributors, debtRecords, orders, distributorOrderMap, distributorPaymentMap]);
 
-  // Thống kê nhanh số lượng NPP theo tình trạng lên đơn
+  // Thống kê nhanh số lượng NPP theo tình trạng lên đơn & trả nợ
   const orderActivityCounts = useMemo(() => {
     let overdue = 0;
+    let over_10_order = 0;
+    let over_10_debt = 0;
     let recent = 0;
     let days_4_7 = 0;
     let days_8_14 = 0;
@@ -197,15 +293,24 @@ export default function NPPPage() {
       } else {
         if (days <= 3) recent++;
         if (days > 3) overdue++;
+        if (days > 10) over_10_order++;
         if (days >= 4 && days <= 7) days_4_7++;
         else if (days >= 8 && days <= 14) days_8_14++;
         else if (days >= 15 && days <= 30) days_15_30++;
         else if (days > 30) over_30++;
       }
+
+      const payInfo = distributorPaymentMap.get(d.id);
+      const fin = calculateDistributorFinancials(d, debtRecords, orders);
+      if (fin.finalDebt > 0 && (!payInfo || payInfo.daysAgo === null || (payInfo.daysAgo ?? 0) > 10)) {
+        over_10_debt++;
+      }
     });
 
     return {
       overdue,
+      over_10_order,
+      over_10_debt,
       recent,
       days_4_7,
       days_8_14,
@@ -214,7 +319,7 @@ export default function NPPPage() {
       none,
       total: distributors.length,
     };
-  }, [distributors, distributorOrderMap]);
+  }, [distributors, distributorOrderMap, distributorPaymentMap, debtRecords, orders]);
 
   const tierOptions: FilterOption[] = [
     { label: 'VIP 1 (Kim Cương)', value: 'VIP 1 (Kim Cương)' },
@@ -239,6 +344,8 @@ export default function NPPPage() {
   const orderActivityOptions: FilterOption[] = useMemo(() => {
     return [
       { label: '⚠️ Quá 3 ngày chưa đặt', value: 'overdue', count: orderActivityCounts.overdue },
+      { label: '⏰ > 10 ngày chưa đặt', value: 'over_10_order', count: orderActivityCounts.over_10_order },
+      { label: '💸 > 10 ngày chưa trả nợ', value: 'over_10_debt', count: orderActivityCounts.over_10_debt },
       { label: 'Đã đặt gần đây (≤ 3 ngày)', value: 'recent', count: orderActivityCounts.recent },
       { label: '4 – 7 ngày chưa đặt (1 tuần)', value: 'days_4_7', count: orderActivityCounts.days_4_7 },
       { label: '8 – 14 ngày chưa đặt (2 tuần)', value: 'days_8_14', count: orderActivityCounts.days_8_14 },
@@ -266,9 +373,15 @@ export default function NPPPage() {
       const days = info?.daysAgo ?? null;
       const hasOrder = days !== null && Boolean(info?.latestOrderDate);
 
+      const payInfo = distributorPaymentMap.get(d.id);
+      const hasDebt = (d.currentDebt !== undefined ? d.currentDebt : (d.finalDebt || 0)) > 0;
+      const isDebtOverdue10 = hasDebt && (!payInfo || payInfo.daysAgo === null || (payInfo.daysAgo ?? 0) > 10);
+
       // Match quick tab
       let matchQuickTab = true;
       if (quickActivityTab === 'overdue') matchQuickTab = days !== null && days > 3;
+      else if (quickActivityTab === 'over_10_order') matchQuickTab = days !== null && days > 10;
+      else if (quickActivityTab === 'over_10_debt') matchQuickTab = isDebtOverdue10;
       else if (quickActivityTab === 'recent') matchQuickTab = days !== null && days <= 3;
       else if (quickActivityTab === 'days_4_7') matchQuickTab = days !== null && days >= 4 && days <= 7;
       else if (quickActivityTab === 'days_8_14') matchQuickTab = days !== null && days >= 8 && days <= 14;
@@ -281,6 +394,8 @@ export default function NPPPage() {
       if (selectedOrderActivity.length > 0) {
         matchActivity = selectedOrderActivity.some((val) => {
           if (val === 'overdue') return days !== null && days > 3;
+          if (val === 'over_10_order') return days !== null && days > 10;
+          if (val === 'over_10_debt') return isDebtOverdue10;
           if (val === 'recent') return days !== null && days <= 3;
           if (val === 'days_4_7') return days !== null && days >= 4 && days <= 7;
           if (val === 'days_8_14') return days !== null && days >= 8 && days <= 14;
@@ -316,6 +431,7 @@ export default function NPPPage() {
     orderDateStart,
     orderDateEnd,
     distributorOrderMap,
+    distributorPaymentMap,
   ]);
 
   
@@ -466,6 +582,76 @@ export default function NPPPage() {
           </div>
         );
       }
+      case 'lastPayment': {
+        const payInfo = distributorPaymentMap.get(row.id);
+        const finalDebt =
+          row.finalDebt !== undefined
+            ? row.finalDebt
+            : (row.oldDebt || 0) + (row.salesAmount || 0) - (row.collectedAmount || 0);
+
+        if (!payInfo || payInfo.daysAgo === null || !payInfo.latestPaymentDate) {
+          if (finalDebt <= 0) {
+            return (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border">
+                Không nợ
+              </span>
+            );
+          }
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60 w-fit">
+                <AlertTriangle size={11} className="text-amber-600 shrink-0" />
+                Chưa có thanh toán
+              </span>
+            </div>
+          );
+        }
+
+        const formattedDate = formatDate(normalizeToISODate(payInfo.latestPaymentDate));
+
+        if (payInfo.isOverdue10) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800 w-fit shadow-xs"
+                title={`Đã ${payInfo.daysAgo} ngày chưa thanh toán thêm (Quá 10 ngày)`}
+              >
+                <AlertTriangle size={11} className="text-rose-600 shrink-0" />
+                {payInfo.daysAgo} ngày chưa trả
+              </span>
+              <span className="text-[10px] text-rose-600/90 dark:text-rose-400 font-mono font-medium">
+                Lần cuối: {formattedDate} {payInfo.latestPaymentAmount > 0 && `(${formatNumber(payInfo.latestPaymentAmount)})`}
+              </span>
+            </div>
+          );
+        }
+
+        if (payInfo.daysAgo === 0) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 w-fit">
+                <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+                Hôm nay
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {formattedDate} {payInfo.latestPaymentAmount > 0 && `(${formatNumber(payInfo.latestPaymentAmount)})`}
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-fit">
+              <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
+              {payInfo.daysAgo} ngày trước
+            </span>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              Lần cuối: {formattedDate} {payInfo.latestPaymentAmount > 0 && `(${formatNumber(payInfo.latestPaymentAmount)})`}
+            </span>
+          </div>
+        );
+      }
       case 'oldDebt':
         return (
           <span className="text-xs font-mono font-medium text-muted-foreground">
@@ -607,6 +793,36 @@ export default function NPPPage() {
             </span>
           )}
         </div>
+
+        {/* Tình trạng trả nợ gần nhất */}
+        {(() => {
+          const payInfo = distributorPaymentMap.get(row.id);
+          const payFormattedDate = payInfo?.latestPaymentDate
+            ? formatDate(normalizeToISODate(payInfo.latestPaymentDate))
+            : '';
+          return (
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+              <span className="text-muted-foreground text-[11px] flex items-center gap-1">
+                <Coins size={11} className="text-amber-500" /> Trả nợ gần nhất:
+              </span>
+              {!payInfo || payInfo.daysAgo === null || !payInfo.latestPaymentDate ? (
+                finalDebt <= 0 ? (
+                  <span className="text-muted-foreground text-[11px]">Không nợ</span>
+                ) : (
+                  <span className="text-amber-600 font-medium text-[11px]">Chưa có thanh toán</span>
+                )
+              ) : payInfo.isOverdue10 ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300">
+                  <AlertTriangle size={11} className="text-rose-600" /> {payInfo.daysAgo} ngày chưa trả ({payFormattedDate})
+                </span>
+              ) : (
+                <span className="text-foreground font-medium text-[11px]">
+                  {payInfo.daysAgo === 0 ? 'Hôm nay' : `${payInfo.daysAgo} ngày trước`} ({payFormattedDate})
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono pt-2 border-t border-border/50">
           <div>
@@ -794,6 +1010,36 @@ export default function NPPPage() {
               >
                 <AlertTriangle size={12} className={quickActivityTab === 'overdue' ? 'text-white' : 'text-rose-600'} />
                 Quá 3 ngày chưa đặt ({orderActivityCounts.overdue})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'over_10_order' ? 'all' : 'over_10_order')}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  quickActivityTab === 'over_10_order'
+                    ? 'bg-red-700 text-white shadow-xs'
+                    : orderActivityCounts.over_10_order > 0
+                    ? 'bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800 hover:bg-rose-100'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                }`}
+                title="Các NPP có đơn gần nhất cách đây hơn 10 ngày"
+              >
+                <Clock size={12} className={quickActivityTab === 'over_10_order' ? 'text-white' : 'text-rose-600'} />
+                &gt; 10 ngày chưa đặt ({orderActivityCounts.over_10_order})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickActivityTab(quickActivityTab === 'over_10_debt' ? 'all' : 'over_10_debt')}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all ${
+                  quickActivityTab === 'over_10_debt'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : orderActivityCounts.over_10_debt > 0
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-200'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                }`}
+                title="Các NPP còn công nợ và quá 10 ngày chưa trả nợ"
+              >
+                <Coins size={12} className={quickActivityTab === 'over_10_debt' ? 'text-white' : 'text-amber-700'} />
+                &gt; 10 ngày chưa trả nợ ({orderActivityCounts.over_10_debt})
               </button>
               <button
                 type="button"
