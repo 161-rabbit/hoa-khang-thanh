@@ -61,18 +61,20 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
       values: rows.length > 0 ? rows : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
     });
 
-    // 2. CHI_TIET_DON_HANG (Thứ tự mới: Mã ĐH, Ngày, Khách hàng, Mã hoa, Giá bán, SL, TT bán, Giá vốn, TT vốn, Lợi nhuận, Tên hoa, ĐVT)
+    // 2. CHI_TIET_DON_HANG (13 cột A–M: ID dòng [id], Mã ĐH [id_don_hang], Ngày, Khách hàng, Mã hoa, Giá bán, SL, TT bán, Giá vốn, TT vốn, Lợi nhuận, Tên hoa, ĐVT)
     const detailRows: any[][] = [];
     body.orders.forEach((o) => {
-      (o.items || []).forEach((item: any) => {
+      (o.items || []).forEach((item: any, idx: number) => {
         const qty = item.quantity || 0;
         const cost = item.costPrice || 0;
         const price = item.unitPrice || 0;
         const importTot = item.importTotal ?? (qty * cost);
         const amt = item.amount ?? (qty * price);
         const prof = item.profit ?? (amt - importTot);
+        const rowId = item.id || `${o.code || 'DH'}-${idx + 1}`;
 
         detailRows.push([
+          rowId,
           o.code || '',
           toSheetDate(o.orderDate),
           o.distributorName || '',
@@ -90,8 +92,8 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
     });
 
     batchData.push({
-      range: 'CHI_TIET_DON_HANG!A2:L' + Math.max(2, detailRows.length + 1),
-      values: detailRows.length > 0 ? detailRows : [['', '', '', '', '', '', '', '', '', '', '', '']],
+      range: 'CHI_TIET_DON_HANG!A2:M' + Math.max(2, detailRows.length + 1),
+      values: detailRows.length > 0 ? detailRows : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
     });
   }
 
