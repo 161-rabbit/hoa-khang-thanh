@@ -613,16 +613,18 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         }
 
         // Nhận diện linh hoạt cấu trúc sheet CHI_TIET_DON_HANG:
-        // Cấu trúc 13 cột mới (theo yêu cầu người dùng):
+        // Cấu trúc 11 cột chuẩn mới (theo yêu cầu: bỏ Tên hoa và ĐVT):
         //   r[0]=id (ID từng dòng), r[1]=id_don_hang (Mã đơn), r[2]=Ngày, r[3]=Khách hàng, r[4]=Mã hoa,
-        //   r[5]=Giá bán, r[6]=SL, r[7]=TT bán, r[8]=Giá vốn, r[9]=TT vốn, r[10]=Lợi nhuận, r[11]=Tên hoa, r[12]=ĐVT
+        //   r[5]=Giá bán, r[6]=SL, r[7]=TT bán, r[8]=Giá vốn, r[9]=TT vốn, r[10]=Lợi nhuận
+        // Cấu trúc 13 cột (có Tên hoa r[11] & ĐVT r[12])
         // Cấu trúc 12 cột cũ:
         //   r[0]=Mã đơn, r[1]=Ngày, r[2]=Khách hàng, r[3]=Mã hoa, r[4]=Giá bán, r[5]=SL, r[6]=TT bán,
         //   r[7]=Giá vốn, r[8]=TT vốn, r[9]=Lợi nhuận, r[10]=Tên hoa, r[11]=ĐVT
-        const is13Col =
-          row.length >= 13 ||
+        const is11or13Col =
           (isNumericString(row[5]) && isNumericString(row[7])) ||
-          (row[2] && (String(row[2]).includes('/') || String(row[2]).includes('-')));
+          (row[2] && (String(row[2]).includes('/') || String(row[2]).includes('-'))) ||
+          row.length === 11 ||
+          row.length >= 13;
 
         let rowId = '';
         let orderCode = '';
@@ -636,7 +638,7 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         let amount = 0;
         let profit = 0;
 
-        if (is13Col) {
+        if (is11or13Col) {
           rowId = String(row[0] || '').trim();
           orderCode = String(row[1] || '').trim();
           flowerCode = String(row[4] || '').trim();

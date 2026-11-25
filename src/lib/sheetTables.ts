@@ -61,7 +61,7 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
       values: rows.length > 0 ? rows : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
     });
 
-    // 2. CHI_TIET_DON_HANG (13 cột A–M: ID dòng [id], Mã ĐH [id_don_hang], Ngày, Khách hàng, Mã hoa, Giá bán, SL, TT bán, Giá vốn, TT vốn, Lợi nhuận, Tên hoa, ĐVT)
+    // 2. CHI_TIET_DON_HANG (11 cột A–K: ID dòng [id], Mã ĐH [id_don_hang], Ngày, Khách hàng, Mã hoa, Giá bán, SL, TT bán, Giá vốn, TT vốn, Lợi nhuận; đã bỏ Tên hoa và ĐVT)
     const detailRows: any[][] = [];
     body.orders.forEach((o) => {
       (o.items || []).forEach((item: any, idx: number) => {
@@ -85,15 +85,13 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
           cost,
           importTot,
           prof,
-          item.flowerName || '',
-          item.unit || 'cành',
         ]);
       });
     });
 
     batchData.push({
-      range: 'CHI_TIET_DON_HANG!A2:M' + Math.max(2, detailRows.length + 1),
-      values: detailRows.length > 0 ? detailRows : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
+      range: 'CHI_TIET_DON_HANG!A2:K' + Math.max(2, detailRows.length + 1),
+      values: detailRows.length > 0 ? detailRows : [['', '', '', '', '', '', '', '', '', '', '']],
     });
   }
 
