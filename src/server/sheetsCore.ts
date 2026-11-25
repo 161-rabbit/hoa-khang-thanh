@@ -40,6 +40,22 @@ export function resolveSheetsConfig(env: SheetsEnv): SheetsConfig {
   };
 }
 
+/** ID Google Sheet hợp lệ: chữ, số, '-' và '_' (thường dài 44 ký tự) */
+export function isValidSpreadsheetId(id?: string | null): boolean {
+  return /^[A-Za-z0-9_-]{20,100}$/.test((id || '').trim());
+}
+
+/**
+ * Dùng ID Google Sheet do app gửi lên (header X-Spreadsheet-Id, đặt ở module Cài đặt).
+ * Không có / không hợp lệ thì giữ ID mặc định trong biến môi trường.
+ * Sheet phải được chia sẻ cho email tài khoản dịch vụ thì mới đọc/ghi được.
+ */
+export function applySpreadsheetOverride(cfg: SheetsConfig, id?: string | null): SheetsConfig {
+  const clean = (id || '').trim();
+  if (!isValidSpreadsheetId(clean) || clean === cfg.spreadsheetId) return cfg;
+  return { ...cfg, spreadsheetId: clean, spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${clean}/edit` };
+}
+
 // ---------- Token Google (JWT RS256 ký bằng Web Crypto) ----------
 
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
@@ -104,7 +120,7 @@ export async function getAccessToken(cfg: SheetsConfig): Promise<string> {
 
 const PULL_RANGES = [
   'DANH_SACH_HOA!A2:G',
-  'NHA_PHAN_PHOI!A2:N',
+  'NHA_PHAN_PHOI!A2:L',
   'NHA_CUNG_CAP!A2:K',
   'DON_HANG!A2:S',
   'NHAN_VIEN!A2:L',
@@ -129,6 +145,7 @@ export interface ApiResult {
  */
 // Cache metadata sheet danh sách bảng (5 phút) để tăng tốc độ ghi dữ liệu
 let cachedSheetsMeta: {
+  spreadsheetId: string;
   sheets: Array<{ properties: { sheetId: number; title: string; gridProperties: { rowCount: number; columnCount: number } } }>;
   timestamp: number;
 } | null = null;
@@ -159,6 +176,7 @@ export async function handleSheetsApi(
           spreadsheetId: cfg.spreadsheetId,
           title: meta.properties?.title || cfg.title,
           url: cfg.spreadsheetUrl,
+          clientEmail: cfg.clientEmail,
           sheets: (meta.sheets || []).map((s) => ({
             id: s.properties.sheetId,
             title: s.properties.title,
@@ -182,7 +200,7 @@ export async function handleSheetsApi(
 
       // Tận dụng cache metadata (hợp lệ 5 phút) để tăng tốc ghi, tránh gọi GET thừa
       const now = Date.now();
-      let metaSheets = cachedSheetsMeta && now - cachedSheetsMeta.timestamp < 300000
+      let metaSheets = cachedSheetsMeta && cachedSheetsMeta.spreadsheetId === cfg.spreadsheetId && now - cachedSheetsMeta.timestamp < 300000
         ? cachedSheetsMeta.sheets
         : null;
 
@@ -193,7 +211,7 @@ export async function handleSheetsApi(
         };
         if (!metaRes.ok) return { status: 500, body: { success: false, error: meta } };
         metaSheets = meta.sheets || [];
-        cachedSheetsMeta = { sheets: metaSheets, timestamp: now };
+        cachedSheetsMeta = { spreadsheetId: cfg.spreadsheetId, sheets: metaSheets, timestamp: now };
       }
 
       const requests: unknown[] = [];
@@ -208,7 +226,7 @@ export async function handleSheetsApi(
           };
           if (refreshMeta.sheets) {
             metaSheets = refreshMeta.sheets;
-            cachedSheetsMeta = { sheets: metaSheets, timestamp: Date.now() };
+            cachedSheetsMeta = { spreadsheetId: cfg.spreadsheetId, sheets: metaSheets, timestamp: Date.now() };
             sheet = metaSheets.find((s) => s.properties.title === title)?.properties;
           }
         }
@@ -235,7 +253,7 @@ export async function handleSheetsApi(
           if (addData.replies?.[0]?.addSheet?.properties) {
             sheet = addData.replies[0].addSheet.properties;
             metaSheets.push({ properties: sheet as any });
-            cachedSheetsMeta = { sheets: metaSheets, timestamp: Date.now() };
+            cachedSheetsMeta = { spreadsheetId: cfg.spreadsheetId, sheets: metaSheets, timestamp: Date.now() };
           } else {
             throw new Error(`Không tìm thấy và không thể tạo sheet ${title}`);
           }

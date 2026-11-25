@@ -1,5 +1,6 @@
 import { pauseModuleAudit } from '@/stores/moduleAuditStore';
 import { GOOGLE_SHEETS_CONFIG } from '@/config/googleSheetsConfig';
+import { getActiveSpreadsheetId, sheetsRequestHeaders, spreadsheetUrlOf } from '@/stores/appSettingsStore';
 import { fromSheetDate } from '@/lib/sheetDate';
 import {
   useCashStore,
@@ -41,6 +42,7 @@ export interface GoogleSheetsStatus {
   spreadsheetId: string;
   title: string;
   url: string;
+  clientEmail?: string;
   sheets: SheetStatusInfo[];
   error?: string;
 }
@@ -100,16 +102,18 @@ export function isNumericString(val: unknown): boolean {
 /**
  * Kiểm tra trạng thái kết nối tới Google Spreadsheet
  */
-export async function checkGoogleSheetsConnection(): Promise<GoogleSheetsStatus> {
+export async function checkGoogleSheetsConnection(spreadsheetId?: string): Promise<GoogleSheetsStatus> {
+  // spreadsheetId: dùng để kiểm tra thử 1 sheet mới ở module Cài đặt trước khi lưu
+  const targetId = spreadsheetId || getActiveSpreadsheetId();
   try {
-    const res = await fetch('/api/google-sheets/status');
+    const res = await fetch('/api/google-sheets/status', { headers: sheetsRequestHeaders({}, targetId) });
     const data = await res.json();
     if (!res.ok || !data.success) {
       return {
         connected: false,
-        spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        spreadsheetId: targetId,
         title: GOOGLE_SHEETS_CONFIG.title,
-        url: GOOGLE_SHEETS_CONFIG.spreadsheetUrl,
+        url: spreadsheetUrlOf(targetId),
         sheets: [],
         error: data.error ? JSON.stringify(data.error) : 'Không thể kết nối Google Sheets',
       };
@@ -118,9 +122,9 @@ export async function checkGoogleSheetsConnection(): Promise<GoogleSheetsStatus>
   } catch (err: any) {
     return {
       connected: false,
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: targetId,
       title: GOOGLE_SHEETS_CONFIG.title,
-      url: GOOGLE_SHEETS_CONFIG.spreadsheetUrl,
+      url: spreadsheetUrlOf(targetId),
       sheets: [],
       error: err?.message || 'Lỗi mạng khi kiểm tra Google Sheets',
     };
@@ -183,7 +187,7 @@ export async function syncAllToGoogleSheets(modules?: SyncableModule[]): Promise
 
     const res = await fetch('/api/google-sheets/sync-all', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: sheetsRequestHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
 
@@ -231,7 +235,7 @@ export async function syncAllToGoogleSheets(modules?: SyncableModule[]): Promise
 export async function pullFromGoogleSheets(): Promise<{ success: boolean; message: string }> {
   let resumeAudit: (() => void) | undefined;
   try {
-    const res = await fetch('/api/google-sheets/pull-all');
+    const res = await fetch('/api/google-sheets/pull-all', { headers: sheetsRequestHeaders() });
     const result = await res.json();
     if (!res.ok || !result.success) {
       throw new Error(result.error ? JSON.stringify(result.error) : 'Lỗi khi tải từ Google Sheets');
@@ -289,6 +293,9 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
     }
 
     // --- 2. NHA_PHAN_PHOI ---
+    // Cột: id(mã NPP), Tên, SĐT, Địa chỉ, Công nợ cũ, Tổng tiền mua, Đã thanh toán, Công nợ hiện tại,
+    //      Ngày lên đơn gần nhất, Số ngày chưa mua, Cảnh báo nợ, Trạng thái
+    // (Sheet không còn cột "Người liên hệ", "Khu vực": giữ giá trị đang có trên web)
     const nppRows = sheetMap['NHA_PHAN_PHOI'] || [];
     if (nppRows.length > 0) {
       const existingNpp = useDistributorStore.getState().distributors;
@@ -299,20 +306,20 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         const code = String(r[0] || '').trim();
         const name = String(r[1] || '').trim();
         const prev = existingNppMap.get(code) || existingNppNameMap.get(name);
-        const oldDebt = parseSheetNumber(r[6]);
-        const totalRevenue = parseSheetNumber(r[7]);
-        const collectedAmount = parseSheetNumber(r[8]);
-        const currentDebt = parseSheetNumber(r[9]) || (oldDebt + totalRevenue - collectedAmount);
+        const oldDebt = parseSheetNumber(r[4]);
+        const totalRevenue = parseSheetNumber(r[5]);
+        const collectedAmount = parseSheetNumber(r[6]);
+        const currentDebt = parseSheetNumber(r[7]) || (oldDebt + totalRevenue - collectedAmount);
 
         return {
           id: prev?.id || `npp-sync-${idx + 1}`,
           code,
           name,
-          representative: String(r[2] || '').trim() || prev?.representative || '',
-          phone: String(r[3] || '').trim() || prev?.phone || '',
+          representative: prev?.representative || '',
+          phone: String(r[2] || '').trim() || prev?.phone || '',
           email: prev?.email || '',
-          address: String(r[4] || '').trim() || prev?.address || '',
-          region: String(r[5] || '').trim() || prev?.region || 'Miền Nam',
+          address: String(r[3] || '').trim() || prev?.address || '',
+          region: prev?.region || 'Miền Nam',
           tier: prev?.tier || 'VIP 1 (Kim Cương)',
           discount: prev?.discount || 0,
           oldDebt,
@@ -684,7 +691,12 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         const sheetItems = itemsByOrderCode.get(code);
 
         // Nhận diện chính xác các cấu trúc sheet DON_HANG:
-        // Layout 1: Chuẩn 17 cột (Đã bỏ SĐT/Địa chỉ, cột Số lượng hoa r[14] sau Người tạo đơn r[13])
+        // Layout 0: Chuẩn 15 cột (bỏ "Đã thanh toán" & "Còn nợ đơn")
+        //   r[0]=id, r[1]=Ngày, r[2]=NPP/Khách, r[3]=Thành tiền hoa, r[4]=Cước, r[5]=Trừ hàng, r[6]=Tổng tiền,
+        //   r[7]=Nợ cũ, r[8]=Thanh toán, r[9]=Trạng thái, r[10]=Trạng thái thanh toán, r[11]=Người tạo,
+        //   r[12]=SL hoa, r[13]=Ghi chú, r[14]=Cập nhật lúc
+        //
+        // Layout 1: Chuẩn 17 cột (bản trước) (Đã bỏ SĐT/Địa chỉ, cột Số lượng hoa r[14] sau Người tạo đơn r[13])
         //   r[0]=Mã ĐH, r[1]=Ngày, r[2]=NPP/Khách, r[3]=Thành tiền hoa, r[4]=Cước, r[5]=Trừ hàng, r[6]=Tổng tiền,
         //   r[7]=Nợ cũ, r[8]=Thanh toán, r[9]=Đã thanh toán, r[10]=Còn nợ, r[11]=Trạng thái, r[12]=Trạng thái thanh toán,
         //   r[13]=Người tạo, r[14]=SL hoa, r[15]=Ghi chú, r[16]=Cập nhật lúc
@@ -695,7 +707,15 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         // Layout 3: Bản cũ 19 cột (có SĐT r[3] & Địa chỉ r[4])
         //   r[0]=Mã, r[1]=Ngày, r[2]=Khách, r[3]=SĐT, r[4]=Địa chỉ, r[5]=SL hoa, r[6]=Thành tiền, r[7]=Cước, r[8]=Trừ hàng...
 
+        const PAYMENT_STATUSES = ['unpaid', 'partial', 'paid'];
+        const ORDER_STATUSES = ['nhap', 'cho_xac_nhan', 'da_xac_nhan', 'dang_giao', 'hoan_thanh', 'huy', 'pending', 'processing', 'delivering', 'completed', 'cancelled'];
+        const isStandard15Cols =
+          r.length >= 10 &&
+          (PAYMENT_STATUSES.includes(String(r[10] || '').trim().toLowerCase()) ||
+            ORDER_STATUSES.includes(String(r[9] || '').trim().toLowerCase()));
+
         const isStandard17Cols =
+          !isStandard15Cols &&
           r.length >= 14 && (
             ['unpaid', 'partial', 'paid'].includes(String(r[12] || '').trim().toLowerCase()) ||
             ['nhap', 'cho_xac_nhan', 'da_xac_nhan', 'dang_giao', 'hoan_thanh', 'huy'].includes(String(r[11] || '').trim().toLowerCase()) ||
@@ -703,6 +723,7 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
           );
 
         const hasPhoneAddress =
+          !isStandard15Cols &&
           !isStandard17Cols &&
           r.length >= 18 &&
           (!isNumericString(r[3]) || !isNumericString(r[4])) &&
@@ -722,7 +743,19 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
         let creator = '';
         let notes = '';
 
-        if (isStandard17Cols) {
+        if (isStandard15Cols) {
+          itemsSubtotal = parseSheetNumber(r[3]) || prev?.itemsSubtotal || 0;
+          shippingFee = parseSheetNumber(r[4]) || prev?.shippingFee || 0;
+          discount = parseSheetNumber(r[5]) || prev?.discount || 0;
+          totalAmount = parseSheetNumber(r[6]) || prev?.totalAmount || 0;
+          oldDebt = parseSheetNumber(r[7]) || prev?.oldDebt || 0;
+          totalPayment = parseSheetNumber(r[8]) || prev?.totalPayment || 0;
+          status = (String(r[9] || prev?.status || 'da_xac_nhan').trim()) as Order['status'];
+          paymentStatus = (String(r[10] || prev?.paymentStatus || 'unpaid').trim()) as Order['paymentStatus'];
+          creator = String(r[11] || '').trim() || prev?.creator || '';
+          totalQuantity = parseSheetNumber(r[12]) || prev?.totalQuantity || 0;
+          notes = String(r[13] || '').trim() || prev?.notes || '';
+        } else if (isStandard17Cols) {
           itemsSubtotal = parseSheetNumber(r[3]) || prev?.itemsSubtotal || 0;
           shippingFee = parseSheetNumber(r[4]) || prev?.shippingFee || 0;
           discount = parseSheetNumber(r[5]) || prev?.discount || 0;
@@ -761,6 +794,11 @@ export async function pullFromGoogleSheets(): Promise<{ success: boolean; messag
           creator = prev?.creator || '';
           notes = String(r[7] || prev?.notes || '').trim();
         }
+
+        // Bỏ "Đã thanh toán" khỏi hệ thống: khách trả tiền ghi bằng phiếu thu ở module Công nợ.
+        // Còn nợ đơn = Thanh toán (web tự tính, không lưu trên sheet).
+        paidAmount = 0;
+        debtAmount = totalPayment || totalAmount + oldDebt;
 
         // Tự động tính tổng số lượng hoa từ các dòng chi tiết nếu đơn chưa có số lượng
         const totalQtyFromItems = sheetItems?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;

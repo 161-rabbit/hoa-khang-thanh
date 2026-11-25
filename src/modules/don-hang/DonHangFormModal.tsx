@@ -428,7 +428,6 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
   const [oldDebt, setOldDebt] = useState<number>(0);
-  const [paidAmount, setPaidAmount] = useState<number>(0);
 
   // Items
   const [items, setItems] = useState<OrderItem[]>([]);
@@ -540,7 +539,6 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
           ? orderToEdit.oldDebt
           : (editDist?.currentDebt ?? editDist?.oldDebt ?? 0)
       );
-      setPaidAmount(orderToEdit.paidAmount || 0);
 
       const mappedItems: OrderItem[] = (orderToEdit.items || []).map((i) => {
         const fl = flowers.find((f) => f.id === i.flowerId);
@@ -590,7 +588,6 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
       setDiscount(0);
 
       setOldDebt(0);
-      setPaidAmount(0);
 
       // THÊM MỚI: ĐỂ TRỐNG Ô NHẬP HOA, SỐ LƯỢNG VÀ GIÁ ĐỂ NGƯỜI DÙNG TỰ NHẬP
       setItems([
@@ -941,7 +938,8 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
       totalAmount,
       oldDebt: Number(oldDebt || 0),
       totalPayment,
-      paidAmount: Number(paidAmount || 0),
+      // Đã bỏ "Đã thanh toán": tiền khách trả ghi bằng phiếu thu ở module Công nợ
+      paidAmount: 0,
       debtAmount,
       totalCost,
       totalProfit: totalProfitFromItems,
@@ -955,7 +953,7 @@ export function DonHangFormModal({ isOpen, onClose, orderToEdit }: Props) {
     } else {
       addOrder({
         ...payload,
-        paymentStatus: paidAmount >= totalAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid',
+        paymentStatus: 'unpaid',
       });
       toast.success(`Đã tạo thành công đơn hàng ${code}`);
     }

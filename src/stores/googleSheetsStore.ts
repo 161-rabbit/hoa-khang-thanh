@@ -314,6 +314,40 @@ export function initGoogleSheetsAutoSync() {
   void refreshFromSheets();
 }
 
+/**
+ * Đổi sang Google Sheet khác (module Cài đặt): CHẶN ghi lên, tải dữ liệu của sheet mới về trước,
+ * tải xong mới cho ghi lại — tránh ghi dữ liệu của sheet cũ đè lên sheet mới.
+ * Trả về true nếu tải về thành công.
+ */
+export async function reloadFromNewSpreadsheet(): Promise<boolean> {
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = null;
+  }
+  pendingModules.clear();
+  hasPendingSync = false;
+  initialPullDone = false;
+
+  // Đợi lượt đồng bộ đang chạy (nếu có) xong, tối đa 60 giây
+  for (let i = 0; i < 120 && useGoogleSheetsStore.getState().isSyncing; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  applyingRemoteData = true;
+  let ok = false;
+  try {
+    ok = Boolean(await useGoogleSheetsStore.getState().pullFromSheets());
+  } catch {
+    ok = false;
+  } finally {
+    applyingRemoteData = false;
+  }
+  // Tải lỗi thì vẫn chặn ghi lên cho tới khi tải lại thành công (mở lại web hoặc bấm Tải về)
+  initialPullDone = ok;
+  if (ok) void useGoogleSheetsStore.getState().checkStatus();
+  return ok;
+}
+
 function _startSubscriptions(handleStoreChange: (mod?: SyncableModule) => void) {
   useOrderStore.subscribe(() => handleStoreChange('orders'));
   useFlowerStore.subscribe(() => handleStoreChange('flowers'));
