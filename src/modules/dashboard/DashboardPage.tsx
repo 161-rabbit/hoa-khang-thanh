@@ -6,6 +6,7 @@ import {
   Boxes,
   CalendarDays,
   CheckCircle2,
+  CircleDollarSign,
   Coins,
   Flower2,
   MinusCircle,
@@ -182,7 +183,7 @@ export default function DashboardPage() {
 
   // ---------- Các ô tổng ----------
   const totals = useMemo(() => {
-    const t = { sale: 0, cost: 0, shipping: 0, discount: 0, profit: 0, orders: filteredOrders.length, qty: 0, purchase: 0, purchaseCount: filteredPurchases.length };
+    const t = { sale: 0, cost: 0, shipping: 0, discount: 0, revenue: 0, profit: 0, orders: filteredOrders.length, qty: 0, purchase: 0, purchaseCount: filteredPurchases.length };
     for (const o of filteredOrders) {
       const f = saleFigures(o);
       t.sale += f.sale;
@@ -192,17 +193,18 @@ export default function DashboardPage() {
       t.profit += f.profit;
       t.qty += (o.items || []).reduce((s, i) => s + (i.quantity || 0), 0);
     }
+    t.revenue = t.sale + t.shipping - t.discount;
     for (const p of filteredPurchases) t.purchase += p.totalAmount || 0;
     return t;
   }, [filteredOrders, filteredPurchases]);
 
   // ---------- Bảng lợi nhuận theo ngày / tháng ----------
   const profitRows = useMemo(() => {
-    const map = new Map<string, { key: string; orders: number; sale: number; cost: number; discount: number; shipping: number; profit: number; purchase: number }>();
+    const map = new Map<string, { key: string; orders: number; sale: number; cost: number; discount: number; shipping: number; revenue: number; profit: number; purchase: number }>();
     const row = (key: string) => {
       let r = map.get(key);
       if (!r) {
-        r = { key, orders: 0, sale: 0, cost: 0, discount: 0, shipping: 0, profit: 0, purchase: 0 };
+        r = { key, orders: 0, sale: 0, cost: 0, discount: 0, shipping: 0, revenue: 0, profit: 0, purchase: 0 };
         map.set(key, r);
       }
       return r;
@@ -218,6 +220,7 @@ export default function DashboardPage() {
       r.cost += f.cost;
       r.discount += f.discount;
       r.shipping += f.shipping;
+      r.revenue += f.sale + f.shipping - f.discount;
       r.profit += f.profit;
     }
     for (const p of filteredPurchases) {
@@ -266,9 +269,10 @@ export default function DashboardPage() {
 
   const kpis = [
     { label: 'Tổng tiền bán', value: totals.sale, icon: TrendingUp, cls: 'bg-emerald-500/10 text-emerald-600', sub: `${fmt(totals.orders)} đơn • ${fmt(totals.qty)} cành/bó` },
-    { label: 'Tiền nhập (giá vốn hoa đã bán)', value: totals.cost, icon: PackagePlus, cls: 'bg-sky-500/10 text-sky-600', sub: `Đơn nhập NCC: ${fmtVND(totals.purchase)} (${fmt(totals.purchaseCount)} đơn)` },
-    { label: 'Tiền trừ hàng', value: totals.discount, icon: MinusCircle, cls: 'bg-rose-500/10 text-rose-600', sub: 'Khoản trừ cho khách' },
     { label: 'Tiền cước xe', value: totals.shipping, icon: Truck, cls: 'bg-amber-500/10 text-amber-600', sub: 'Thu thêm theo đơn' },
+    { label: 'Tiền trừ hàng', value: totals.discount, icon: MinusCircle, cls: 'bg-rose-500/10 text-rose-600', sub: 'Khoản trừ cho khách' },
+    { label: 'Doanh thu', value: totals.revenue, icon: CircleDollarSign, cls: 'bg-teal-500/10 text-teal-600', sub: 'Tiền bán + cước xe − trừ hàng' },
+    { label: 'Tiền nhập (giá vốn hoa đã bán)', value: totals.cost, icon: PackagePlus, cls: 'bg-sky-500/10 text-sky-600', sub: `Đơn nhập NCC: ${fmtVND(totals.purchase)} (${fmt(totals.purchaseCount)} đơn)` },
     { label: 'Lợi nhuận', value: totals.profit, icon: Coins, cls: 'bg-violet-500/10 text-violet-600', sub: `Bán − vốn − trừ hàng • ${margin.toFixed(1)}%` },
   ];
 
@@ -384,7 +388,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Các ô tổng theo lọc */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {kpis.map((k) => (
           <div key={k.label} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
@@ -409,7 +413,7 @@ export default function DashboardPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-border">
             <div>
               <h2 className="text-base font-semibold text-foreground">Lợi nhuận theo {groupBy === 'day' ? 'ngày' : 'tháng'}</h2>
-              <p className="text-xs text-muted-foreground">Lợi nhuận = Tiền bán − Tiền nhập (giá vốn) − Trừ hàng</p>
+              <p className="text-xs text-muted-foreground">Doanh thu = Tiền bán + Cước xe − Trừ hàng • Lợi nhuận = Tiền bán − Tiền nhập (giá vốn) − Trừ hàng</p>
             </div>
             <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
               {(['day', 'month'] as GroupBy[]).map((g) => (
@@ -433,9 +437,10 @@ export default function DashboardPage() {
                   <th className="text-left px-3 py-2 font-semibold">{groupBy === 'day' ? 'Ngày' : 'Tháng'}</th>
                   <th className="text-right px-3 py-2 font-semibold">Số đơn</th>
                   <th className="text-right px-3 py-2 font-semibold">Tiền bán</th>
-                  <th className="text-right px-3 py-2 font-semibold">Tiền nhập</th>
-                  <th className="text-right px-3 py-2 font-semibold">Trừ hàng</th>
                   <th className="text-right px-3 py-2 font-semibold">Cước xe</th>
+                  <th className="text-right px-3 py-2 font-semibold">Trừ hàng</th>
+                  <th className="text-right px-3 py-2 font-semibold">Doanh thu</th>
+                  <th className="text-right px-3 py-2 font-semibold">Tiền nhập</th>
                   <th className="text-right px-3 py-2 font-semibold">Lợi nhuận</th>
                   <th className="text-right px-3 py-2 font-semibold">Tỷ suất</th>
                   <th className="text-right px-3 py-2 font-semibold">Nhập NCC</th>
@@ -444,7 +449,7 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-border/60">
                 {profitRows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-center text-muted-foreground py-10 text-sm">
+                    <td colSpan={10} className="text-center text-muted-foreground py-10 text-sm">
                       Không có dữ liệu trong bộ lọc này
                     </td>
                   </tr>
@@ -454,9 +459,10 @@ export default function DashboardPage() {
                     <td className="px-3 py-2 font-medium whitespace-nowrap">{labelOf(r.key)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(r.orders)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{fmt(r.sale)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-sky-600">{fmt(r.cost)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-rose-600">{fmt(r.discount)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-amber-600">{fmt(r.shipping)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-rose-600">{fmt(r.discount)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-600">{fmt(r.revenue)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-sky-600">{fmt(r.cost)}</td>
                     <td className={`px-3 py-2 text-right tabular-nums font-bold ${r.profit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{fmt(r.profit)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {r.sale > 0 ? `${((r.profit / r.sale) * 100).toFixed(1)}%` : '—'}
@@ -471,9 +477,10 @@ export default function DashboardPage() {
                     <td className="px-3 py-2">Tổng ({fmt(profitRows.length)} {groupBy === 'day' ? 'ngày' : 'tháng'})</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.orders)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{fmt(totals.sale)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-sky-600">{fmt(totals.cost)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-rose-600">{fmt(totals.discount)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-amber-600">{fmt(totals.shipping)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-rose-600">{fmt(totals.discount)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-teal-600">{fmt(totals.revenue)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-sky-600">{fmt(totals.cost)}</td>
                     <td className={`px-3 py-2 text-right tabular-nums ${totals.profit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>{fmt(totals.profit)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{margin.toFixed(1)}%</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(totals.purchase)}</td>
