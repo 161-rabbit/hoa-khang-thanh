@@ -249,15 +249,19 @@ export default function DashboardPage() {
 
   // ---------- Phần tổng quan cũ & Công nợ NCC ----------
   const supplierDebtSummary = useMemo(() => {
+    let totalImport = 0;
+    let totalPaid = 0;
     let totalDebt = 0;
     let countWithDebt = 0;
     for (const s of suppliers) {
       const fin = calculateSupplierFinancials(s, debtRecords, supplierOrders);
+      totalImport += fin.importAmount || 0;
+      totalPaid += fin.paidAmount || 0;
       const d = fin.finalDebt ?? fin.totalDebt ?? 0;
       totalDebt += d;
       if (d > 0) countWithDebt++;
     }
-    return { totalDebt, countWithDebt };
+    return { totalImport, totalPaid, totalDebt, countWithDebt };
   }, [suppliers, debtRecords, supplierOrders]);
 
   const lowStockCount = useMemo(() => inventory.filter((i) => i.currentStock <= i.minStock && i.minStock > 0).length, [inventory]);
@@ -528,14 +532,28 @@ export default function DashboardPage() {
       </div>
 
       {/* Tổng quan nhanh */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-9 gap-3">
         {[
           { icon: Flower2, cls: 'bg-rose-500/10 text-rose-600', title: `${fmt(flowers.length)} giống hoa`, sub: 'Danh sách hoa', to: '/hoa' },
           { icon: Store, cls: 'bg-purple-500/10 text-purple-600', title: `${fmt(distributors.length)} nhà phân phối`, sub: 'Danh sách NPP', to: '/nha-phan-phoi' },
           { icon: Truck, cls: 'bg-emerald-500/10 text-emerald-600', title: `${fmt(suppliers.length)} nhà vườn / NCC`, sub: 'Danh sách NCC', to: '/nha-cung-cap' },
           {
+            icon: PackagePlus,
+            cls: 'bg-blue-500/10 text-blue-600',
+            title: fmtVND(supplierDebtSummary.totalImport),
+            sub: 'Tiền mua NCC',
+            to: '/don-hang-ncc',
+          },
+          {
+            icon: Coins,
+            cls: 'bg-teal-500/10 text-teal-600',
+            title: fmtVND(supplierDebtSummary.totalPaid),
+            sub: 'Trả NCC',
+            to: '/cong-no-ncc',
+          },
+          {
             icon: CreditCard,
-            cls: 'bg-amber-500/10 text-amber-600',
+            cls: 'bg-rose-500/10 text-rose-600',
             title: fmtVND(supplierDebtSummary.totalDebt),
             sub: `${supplierDebtSummary.countWithDebt} NCC còn nợ • Công nợ NCC`,
             to: '/cong-no-ncc',
