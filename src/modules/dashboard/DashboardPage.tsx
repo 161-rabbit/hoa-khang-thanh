@@ -264,6 +264,36 @@ export default function DashboardPage() {
     return { totalImport, totalPaid, totalDebt, countWithDebt };
   }, [suppliers, debtRecords, supplierOrders]);
 
+  // Tiền mua NCC và Trả NCC tính chuẩn xác THEO BỘ LỌC (ngày + nhà cung cấp + tìm kiếm)
+  const filteredPurchasesSummary = useMemo(() => {
+    // 1. Tiền mua NCC theo bộ lọc
+    const buyAmount = filteredPurchases.reduce((s, p) => s + (p.totalAmount || 0), 0);
+
+    // 2. Tiền trả NCC theo bộ lọc (bao gồm thanh toán trên đơn nhập & phiếu chi trả nợ NCC)
+    const recordedCodes = new Set<string>();
+    let paidAmount = 0;
+    for (const p of filteredPurchases) {
+      paidAmount += p.paidAmount || 0;
+      if (p.code) recordedCodes.add(p.code);
+      if (p.id) recordedCodes.add(p.id);
+    }
+
+    const ncc = nccName.trim().toLowerCase();
+    for (const r of debtRecords) {
+      if (r.partnerType !== 'ncc') continue;
+      if (!inRange(r.date)) continue;
+      if (ncc && (r.partnerName || '').trim().toLowerCase() !== ncc) continue;
+      const ref = r.referenceCode || (r.id?.startsWith('debt-ncc-') ? r.id.replace('debt-ncc-', '') : '');
+      if (ref && recordedCodes.has(ref)) continue;
+
+      const isThu = r.type === 'thu' || ((r.decreaseAmount || 0) > 0 && (r.increaseAmount || 0) === 0);
+      const dec = r.decreaseAmount !== undefined ? r.decreaseAmount : (isThu ? (r.amount || 0) : 0);
+      paidAmount += dec;
+    }
+
+    return { buyAmount, paidAmount };
+  }, [filteredPurchases, debtRecords, range, nccName]);
+
   const lowStockCount = useMemo(() => inventory.filter((i) => i.currentStock <= i.minStock && i.minStock > 0).length, [inventory]);
   const cashSummary = useMemo(() => {
     let income = 0;
@@ -532,7 +562,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Tổng quan nhanh */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-9 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8 gap-3">
         {[
           { icon: Flower2, cls: 'bg-rose-500/10 text-rose-600', title: `${fmt(flowers.length)} giống hoa`, sub: 'Danh sách hoa', to: '/hoa' },
           { icon: Store, cls: 'bg-purple-500/10 text-purple-600', title: `${fmt(distributors.length)} nhà phân phối`, sub: 'Danh sách NPP', to: '/nha-phan-phoi' },
@@ -540,16 +570,25 @@ export default function DashboardPage() {
           {
             icon: PackagePlus,
             cls: 'bg-blue-500/10 text-blue-600',
-            title: fmtVND(supplierDebtSummary.totalImport),
-            sub: 'Tiền mua NCC',
             to: '/don-hang-ncc',
-          },
-          {
-            icon: Coins,
-            cls: 'bg-teal-500/10 text-teal-600',
-            title: fmtVND(supplierDebtSummary.totalPaid),
-            sub: 'Trả NCC',
-            to: '/cong-no-ncc',
+            customContent: (
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold leading-tight flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-blue-600 tabular-nums whitespace-nowrap">
+                    <span className="text-muted-foreground font-normal text-[11px]">Mua: </span>
+                    {fmtVND(filteredPurchasesSummary.buyAmount)}
+                  </span>
+                  <span className="text-muted-foreground/60 hidden xl:inline">•</span>
+                  <span className="text-emerald-600 tabular-nums whitespace-nowrap">
+                    <span className="text-muted-foreground font-normal text-[11px]">Trả: </span>
+                    {fmtVND(filteredPurchasesSummary.paidAmount)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate mt-1" title="Theo bộ lọc thời gian & nhà cung cấp">
+                  Mua & Trả NCC (theo lọc • {fmt(filteredPurchases.length)} đơn)
+                </div>
+              </div>
+            ),
           },
           {
             icon: CreditCard,
@@ -573,19 +612,23 @@ export default function DashboardPage() {
             sub: `Thu chi theo lọc • Thu ${fmt(cashSummary.income)} / Chi ${fmt(cashSummary.expense)}`,
             to: '/thu-chi',
           },
-        ].map((c) => (
+        ].map((c, idx) => (
           <div
-            key={c.to}
+            key={c.to || idx}
             onClick={() => navigate(c.to)}
             className="rounded-xl border border-border bg-card/60 p-3 flex items-center gap-3 hover:bg-muted/40 transition-colors cursor-pointer"
           >
             <div className={`p-2.5 rounded-lg shrink-0 ${c.cls}`}>
               <c.icon size={20} />
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground truncate">{c.title}</div>
-              <div className="text-[11px] text-muted-foreground truncate" title={c.sub}>{c.sub}</div>
-            </div>
+            {c.customContent ? (
+              c.customContent
+            ) : (
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground truncate">{c.title}</div>
+                <div className="text-[11px] text-muted-foreground truncate" title={c.sub}>{c.sub}</div>
+              </div>
+            )}
           </div>
         ))}
       </div>
