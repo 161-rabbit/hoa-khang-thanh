@@ -120,7 +120,7 @@ export async function getAccessToken(cfg: SheetsConfig): Promise<string> {
 
 const PULL_RANGES = [
   'DANH_SACH_HOA!A2:G',
-  'NHA_PHAN_PHOI!A2:L',
+  'NHA_PHAN_PHOI!A2:H',
   'NHA_CUNG_CAP!A2:K',
   'DON_HANG!A2:S',
   'NHAN_VIEN!A2:L',

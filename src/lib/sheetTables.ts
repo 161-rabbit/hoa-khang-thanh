@@ -112,7 +112,7 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
     });
   }
 
-  // 4. NHA_PHAN_PHOI (12 cột A–L: đã bỏ "Người liên hệ" và "Khu vực")
+  // 4. NHA_PHAN_PHOI (8 cột A–H: id, Tên, SĐT, Địa chỉ, Công nợ cũ, Tổng tiền mua, Đã thanh toán, Công nợ hiện tại)
   if (body.distributors) {
     const rows = body.distributors.map((d) => [
       d.code || '',
@@ -123,14 +123,10 @@ export function buildSheetTables(body: SheetSyncBody): SheetTable[] {
       d.totalRevenue || 0,
       d.collectedAmount || 0,
       d.currentDebt ?? ((d.oldDebt || 0) + (d.totalRevenue || 0) - (d.collectedAmount || 0)),
-      toSheetDate(d.lastOrderDate),
-      d.daysSinceLastOrder ? `${d.daysSinceLastOrder} ngày` : '',
-      d.isOverdue ? '⚠️ Quá hạn' : 'Bình thường',
-      d.status || 'Hoạt động',
     ]);
     batchData.push({
-      range: 'NHA_PHAN_PHOI!A2:L' + Math.max(2, rows.length + 1),
-      values: rows.length > 0 ? rows : [['', '', '', '', '', '', '', '', '', '', '', '']],
+      range: 'NHA_PHAN_PHOI!A2:H' + Math.max(2, rows.length + 1),
+      values: rows.length > 0 ? rows : [['', '', '', '', '', '', '', '']],
     });
   }
 
