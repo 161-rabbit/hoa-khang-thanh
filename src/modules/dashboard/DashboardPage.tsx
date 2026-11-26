@@ -2,12 +2,11 @@ import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle,
   Boxes,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   Coins,
+  CreditCard,
   Flower2,
   MinusCircle,
   PackagePlus,
@@ -33,16 +32,17 @@ import {
 import { Button } from '@/components/ui/Button';
 import { PartnerAutocomplete, removeVietnameseTones } from '@/components/ui/PartnerAutocomplete';
 import {
+  calculateSupplierFinancials,
   useCashStore,
-  useEmployeeStore,
+  useDebtStore,
   useDistributorStore,
+  useEmployeeStore,
   useFlowerStore,
   useInventoryStore,
   useOrderStore,
   useSupplierOrderStore,
   useSupplierStore,
 } from '@/stores/hoaKhangThanhStore';
-import { formatDate } from '@/lib/format';
 import type { Order, SupplierOrder } from '@/types/hoaKhangThanh';
 
 type Preset = 'today' | '7d' | 'month' | 'lastMonth' | 'year' | 'all' | 'custom';
@@ -112,6 +112,7 @@ export default function DashboardPage() {
   const suppliers = useSupplierStore((s) => s.suppliers);
   const inventory = useInventoryStore((s) => s.inventory);
   const transactions = useCashStore((s) => s.transactions);
+  const debtRecords = useDebtStore((s) => s.records);
 
   // ---------- Bộ lọc ----------
   const [preset, setPreset] = useState<Preset>('month');
@@ -246,7 +247,19 @@ export default function DashboardPage() {
     [profitRows, groupBy],
   );
 
-  // ---------- Phần tổng quan cũ ----------
+  // ---------- Phần tổng quan cũ & Công nợ NCC ----------
+  const supplierDebtSummary = useMemo(() => {
+    let totalDebt = 0;
+    let countWithDebt = 0;
+    for (const s of suppliers) {
+      const fin = calculateSupplierFinancials(s, debtRecords, supplierOrders);
+      const d = fin.finalDebt ?? fin.totalDebt ?? 0;
+      totalDebt += d;
+      if (d > 0) countWithDebt++;
+    }
+    return { totalDebt, countWithDebt };
+  }, [suppliers, debtRecords, supplierOrders]);
+
   const lowStockCount = useMemo(() => inventory.filter((i) => i.currentStock <= i.minStock && i.minStock > 0).length, [inventory]);
   const cashSummary = useMemo(() => {
     let income = 0;
@@ -515,11 +528,18 @@ export default function DashboardPage() {
       </div>
 
       {/* Tổng quan nhanh */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-3">
         {[
           { icon: Flower2, cls: 'bg-rose-500/10 text-rose-600', title: `${fmt(flowers.length)} giống hoa`, sub: 'Danh sách hoa', to: '/hoa' },
           { icon: Store, cls: 'bg-purple-500/10 text-purple-600', title: `${fmt(distributors.length)} nhà phân phối`, sub: 'Danh sách NPP', to: '/nha-phan-phoi' },
           { icon: Truck, cls: 'bg-emerald-500/10 text-emerald-600', title: `${fmt(suppliers.length)} nhà vườn / NCC`, sub: 'Danh sách NCC', to: '/nha-cung-cap' },
+          {
+            icon: CreditCard,
+            cls: 'bg-amber-500/10 text-amber-600',
+            title: fmtVND(supplierDebtSummary.totalDebt),
+            sub: `${supplierDebtSummary.countWithDebt} NCC còn nợ • Công nợ NCC`,
+            to: '/cong-no-ncc',
+          },
           { icon: Users, cls: 'bg-sky-500/10 text-sky-600', title: `${fmt(employees.length)} nhân viên`, sub: 'Danh sách nhân viên', to: '/nhan-vien' },
           {
             icon: Boxes,
@@ -550,87 +570,6 @@ export default function DashboardPage() {
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Đơn mới nhất theo lọc & cảnh báo kho */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Đơn hàng mới nhất</h2>
-              <p className="text-xs text-muted-foreground">Theo bộ lọc đang chọn</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/don-hang')} className="text-xs text-primary">
-              Xem tất cả →
-            </Button>
-          </div>
-          <div className="divide-y divide-border/60">
-            {[...filteredOrders]
-              .sort((a, b) => (ymd(b.orderDate) > ymd(a.orderDate) ? 1 : -1))
-              .slice(0, 6)
-              .map((order) => {
-                const f = saleFigures(order);
-                return (
-                  <div
-                    key={order.id}
-                    onClick={() => navigate('/don-hang')}
-                    className="py-2.5 flex items-center justify-between gap-3 hover:bg-muted/30 px-2 rounded-lg cursor-pointer"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs text-primary">{order.code}</span>
-                        <span className="text-xs font-semibold text-foreground truncate">{order.distributorName}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatDate(order.orderDate)} • {order.items.length} loại hoa
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-foreground">{fmtVND(order.totalAmount || f.sale)}</div>
-                      <div className={`text-[11px] ${f.profit < 0 ? 'text-rose-600' : 'text-violet-600'}`}>Lãi {fmt(f.profit)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            {filteredOrders.length === 0 && <div className="text-xs text-muted-foreground py-6 text-center">Không có đơn</div>}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Cảnh báo tồn kho</h2>
-              <p className="text-xs text-muted-foreground">Các loại hoa có tồn dưới ngưỡng tối thiểu</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/ton-kho')} className="text-xs text-primary">
-              Quản lý kho →
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {inventory
-              .filter((i) => i.currentStock <= i.minStock && i.minStock > 0)
-              .slice(0, 6)
-              .map((item, idx) => (
-                <div key={`${item.flowerId}-${idx}`} className="p-2.5 rounded-xl border border-amber-300/60 bg-amber-500/5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-foreground truncate">{item.flowerName}</div>
-                      <div className="text-[11px] text-muted-foreground truncate">{item.warehouse}</div>
-                    </div>
-                  </div>
-                  <div className="text-xs font-bold text-foreground shrink-0">
-                    {item.currentStock} {item.unit}
-                  </div>
-                </div>
-              ))}
-            {lowStockCount === 0 && (
-              <div className="text-xs text-emerald-600 flex items-center gap-1.5 py-6 justify-center">
-                <CheckCircle2 size={14} /> Tồn kho đảm bảo
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
