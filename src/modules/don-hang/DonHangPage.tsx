@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
+  Calendar,
   ChartColumn,
   Coins,
   ExternalLink,
@@ -20,6 +21,7 @@ import { DataTable } from '@/components/data/DataTable';
 import { MultiSelectFilter, type FilterOption } from '@/components/ui/MultiSelectFilter';
 import type { ColumnDef } from '@/stores/createListStore';
 import {
+  normalizeToISODate,
   syncAllOrdersToDebtRecords,
   useDebtStore,
   useDistributorStore,
@@ -76,6 +78,41 @@ export default function DonHangPage() {
   // Filters
   const [selectedPartners, setSelectedPartners] = useState<string[]>([]);
   const [selectedDebtStatuses, setSelectedDebtStatuses] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+
+  // Quick date presets
+  const handleQuickDateFilter = (mode: 'all' | 'today' | 'yesterday' | 'week' | 'month') => {
+    setDateFilterMode(mode);
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (mode === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (mode === 'today') {
+      const s = toISO(today);
+      setStartDate(s);
+      setEndDate(s);
+    } else if (mode === 'yesterday') {
+      const y = new Date(today);
+      y.setDate(today.getDate() - 1);
+      const s = toISO(y);
+      setStartDate(s);
+      setEndDate(s);
+    } else if (mode === 'week') {
+      const past7 = new Date(today);
+      past7.setDate(today.getDate() - 7);
+      setStartDate(toISO(past7));
+      setEndDate(toISO(today));
+    } else if (mode === 'month') {
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      setStartDate(toISO(startOfMonth));
+      setEndDate(toISO(today));
+    }
+  };
 
   // Selection & Columns
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -190,6 +227,11 @@ export default function DonHangPage() {
         (selectedDebtStatuses.includes('has_debt') && debt > 0) ||
         (selectedDebtStatuses.includes('paid') && debt <= 0);
 
+      // Match date range (Từ ngày ... Đến ngày)
+      const iso = normalizeToISODate(o.orderDate);
+      if (startDate && iso < startDate) return false;
+      if (endDate && iso > endDate) return false;
+
       return matchSearch && matchPartner && matchDebt;
     }).sort((a, b) => {
       const tA = parseDateTimestamp(a.orderDate) ?? 0;
@@ -197,7 +239,7 @@ export default function DonHangPage() {
       if (tB !== tA) return tB - tA; // Lớn tới bé: ngày mới nhất hiển thị lên đầu
       return (b.code || '').localeCompare(a.code || '', undefined, { numeric: true });
     });
-  }, [orders, searchTerm, selectedPartners, selectedDebtStatuses, overdueCustomerMap]);
+  }, [orders, searchTerm, selectedPartners, selectedDebtStatuses, overdueCustomerMap, startDate, endDate]);
 
   // Paginated Data
   
@@ -528,11 +570,15 @@ export default function DonHangPage() {
 
   const activeFilterCount =
     (selectedPartners.length > 0 ? 1 : 0) +
-    (selectedDebtStatuses.length > 0 ? 1 : 0);
+    (selectedDebtStatuses.length > 0 ? 1 : 0) +
+    (startDate || endDate ? 1 : 0);
 
   const handleClearAllFilters = () => {
     setSelectedPartners([]);
     setSelectedDebtStatuses([]);
+    setStartDate('');
+    setEndDate('');
+    setDateFilterMode('all');
     setSearchTerm('');
   };
 
@@ -567,6 +613,76 @@ export default function DonHangPage() {
 
       {activeTab === 'danhsach' && (
         <div className="flex-1 min-h-0 flex flex-col">
+          {/* Thanh lọc ngày (Tất cả, Hôm nay, Hôm qua, 7 ngày qua, Tháng này + Từ ngày đến ngày) */}
+          <div className="px-3 sm:px-4 py-2 bg-card/60 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            {/* Nút lọc nhanh */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mr-1">
+                <Calendar size={13} className="text-primary" /> Lọc ngày:
+              </span>
+              {(['all', 'today', 'yesterday', 'week', 'month'] as const).map((m) => {
+                const labels = {
+                  all: 'Tất cả',
+                  today: 'Hôm nay',
+                  yesterday: 'Hôm qua',
+                  week: '7 ngày qua',
+                  month: 'Tháng này',
+                };
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => handleQuickDateFilter(m)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      dateFilterMode === m
+                        ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                        : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    {labels[m]}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Chọn khoảng ngày: Từ ... Đến ... */}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-background px-2.5 py-1 rounded-md border border-input shadow-2xs">
+              <span>Từ:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setDateFilterMode('custom');
+                }}
+                className="h-6 px-1.5 text-xs rounded border border-border bg-card text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                title="Đơn hàng từ ngày"
+              />
+              <span className="text-muted-foreground">-</span>
+              <span>Đến:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDateFilterMode('custom');
+                }}
+                className="h-6 px-1.5 text-xs rounded border border-border bg-card text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                title="Đơn hàng đến ngày"
+              />
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => handleQuickDateFilter('all')}
+                  className="h-5 px-1 text-[11px] font-semibold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors"
+                  title="Xóa lọc khoảng ngày"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* List Toolbar */}
           <ListToolbar
             showBack={true}
